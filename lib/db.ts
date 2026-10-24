@@ -2,8 +2,14 @@ import { Pool } from "pg";
 
 const g = globalThis as unknown as { _pool?: Pool };
 
-export const pool =
-  g._pool ?? new Pool({ connectionString: process.env.DATABASE_URL ?? "postgres://localhost:5432/wsp" });
+const raw = process.env.DATABASE_URL ?? "postgres://localhost:5432/wsp";
+const local = /@(localhost|127\.0\.0\.1)[:/]|^postgres(ql)?:\/\/(localhost|127\.0\.0\.1)[:/]/.test(raw);
+// Hosted databases (Tiger Data) require SSL. Node does not trust their certificate chain
+// (SELF_SIGNED_CERT_IN_CHAIN), so we drop sslmode from the URL and encrypt without verifying the server.
+// TODO(decision): pin the provider's CA certificate instead of rejectUnauthorized: false.
+const url = local ? raw : raw.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
+
+export const pool = g._pool ?? new Pool({ connectionString: url, ssl: local ? undefined : { rejectUnauthorized: false } });
 if (process.env.NODE_ENV !== "production") g._pool = pool;
 
 export async function q<T = any>(text: string, params: unknown[] = []): Promise<T[]> {

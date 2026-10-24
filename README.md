@@ -33,12 +33,23 @@ SESSION_SECRET=any-long-random-text
 
 Leave `USE_MOCKS=true`. That makes the app use fake data for the bank, places and AI, so it never breaks. To try the real services, add the keys (`NESSIE_API_KEY`, `SERPAPI_KEY`, `GEMINI_API_KEY`) and set `USE_MOCKS=false`.
 
+### Using Tiger Data instead of local Postgres
+
+1. Create a database (service) in Tiger Data and copy its connection string.
+2. Put it in `.env.local` as `DATABASE_URL=...` (replace any password placeholder).
+3. Create the tables: `npm run db:migrate`
+4. Load the demo data: `npm run db:seed` (wipes the tables first, so only on a fresh database).
+5. `npm run dev`
+
+SSL is turned on automatically for any database that isn't on localhost. You don't need `createdb` for this.
+
 ### If something goes wrong
 
 | Problem | Fix |
 |---|---|
 | `createdb: command not found` | Postgres isn't installed or isn't running. `brew install postgresql@17` then `brew services start postgresql@17` |
-| `database "wsp" does not exist` | Run `createdb wsp` |
+| `database "wsp" does not exist` | Run `createdb wsp` (local Postgres only) |
+| SSL or certificate error with Tiger Data | Check the connection string was copied in full, then tell the team what the error says |
 | "demo user missing" on the login screen | Run `npm run db:setup` |
 | `npm error ... package.json` | You're in the wrong folder. `cd` into the project folder first |
 | Want a clean slate | Run `npm run db:setup` again. It wipes the tables and re-adds the demo data |

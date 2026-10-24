@@ -1,7 +1,7 @@
 import { q1 } from "@/lib/db";
 import { json, requireUser } from "@/lib/api";
 import { getPurchases, getSeries } from "@/lib/nessie";
-import { computeTier } from "@/lib/tier";
+import { TIER_CUTOFFS, computeTier } from "@/lib/tier";
 
 // Owner only: this is the one place raw spending is exposed, and only for the signed-in user.
 export async function GET(req: Request) {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   for (const p of purchases) cats.set(p.category, (cats.get(p.category) ?? 0) + p.amount);
   const series = await getSeries(u.nessie_account_id, days);
   return json({
-    tier, avgOuting: Math.round(avg * 100) / 100, linked: true,
+    tier, avgOuting: Math.round(avg * 100) / 100, cutoffs: TIER_CUTOFFS, linked: true,
     categories: [...cats.entries()].map(([name, total]) => ({ name, total: Math.round(total) })).sort((a, b) => b.total - a.total),
     recent: purchases.slice(-5).reverse(),
     ...series,

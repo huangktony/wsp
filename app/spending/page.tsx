@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Page } from "@/components/Page";
 import { BalanceDebtChart } from "@/components/BalanceDebtChart";
 import { CategoryBars } from "@/components/CategoryBars";
+import { TierGauge } from "@/components/TierGauge";
 import { TierBadge } from "@/components/TierBadge";
 import { api, useApi } from "@/lib/client";
 
@@ -26,6 +27,7 @@ export default function Spending() {
         <p className="font-display text-4xl font-bold">${(bal - debt).toLocaleString()}</p>
         <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted">Your fun budget <TierBadge tier={data.tier} /> avg ${data.avgOuting ?? "–"} per outing</div>
       </div>
+      <div className="card mb-4"><h2 className="mb-3 font-bold">Your budget level</h2><TierGauge tier={data.tier} avg={data.avgOuting} cutoffs={data.cutoffs} /></div>
       <div className="mb-3 flex gap-2">
         {[7, 14, 30].map((d) => <button key={d} onClick={() => setDays(d)} className={`rounded-full border px-4 py-1 text-sm font-semibold ${days === d ? "border-sage bg-sage text-sageink" : "border-line"}`}>{d}d</button>)}
       </div>

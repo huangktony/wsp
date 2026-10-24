@@ -2,6 +2,7 @@
 import { z } from "zod";
 import type { Place } from "./serpapi";
 import { estCost } from "./serpapi";
+import { stopTimes } from "./slot";
 
 export const PlanSchema = z.object({
   title: z.string(),
@@ -47,33 +48,50 @@ async function callGemini(prompt: string): Promise<PlanDraft[]> {
 
 /** Deterministic fallback built from the candidate places. Total cost per plan stays under the tier cap. */
 const CAP: Record<string, number> = { $: 20, $$: 40, $$$: 90 };
-const TIMES = ["5:30 PM", "7:30 PM", "9:30 PM"];
+const VIBE: Record<number, string> = { 1: "A short, low-key option.", 2: "A classic two-stop outing.", 3: "The bigger outing." };
+const SHORT = (n: string) => n.replace(/^The /, "").split(/\s+/).slice(0, 2).join(" ").replace(/'s$/, "");
 
 export function mockPlans(places: Place[], slot: string, tier = "$$"): PlanDraft[] {
   const pool = places.length ? places : [{ name: "Local spot", price: "$" as const, category: "food", rating: 4, address: "" }];
-  const build = (title: string, start: number, maxStops: number): PlanDraft => {
-    const stops: { place: string; time: string }[] = [];
+  const used = new Set<string>();
+  const build = (start: number, maxStops: number): PlanDraft => {
+    const picked: Place[] = [];
     let cost = 0;
-    for (let i = 0; i < pool.length && stops.length < maxStops; i++) {
-      const p = pool[(start + i) % pool.length];
-      const c = estCost(p.price);
-      if (stops.some((s) => s.place === p.name) || cost + c > (CAP[tier] ?? 40)) continue;
-      stops.push({ place: p.name, time: TIMES[stops.length] });
-      cost += c;
+    // Prefer places no other plan used, so the 3 plans really differ.
+    for (const fresh of [true, false]) {
+      for (let i = 0; i < pool.length && picked.length < maxStops; i++) {
+        const p = pool[(start + i) % pool.length];
+        const c = estCost(p.price);
+        if ((fresh && used.has(p.name)) || picked.some((x) => x.name === p.name) || picked.some((x) => x.category === p.category) || cost + c > (CAP[tier] ?? 40)) continue;
+        picked.push(p);
+        cost += c;
+      }
     }
-    if (!stops.length) {
+    if (!picked.length) {
       const cheapest = [...pool].sort((a, b) => estCost(a.price) - estCost(b.price))[0];
-      stops.push({ place: cheapest.name, time: TIMES[0] });
+      picked.push(cheapest);
       cost = estCost(cheapest.price);
     }
-    return { title, summary: `${stops.map((s) => s.place).join(", then ")} on ${slot}.`, stops, est_cost_per_person: cost, why_fits: `Fits the ${tier} group budget and the group's shared interests.` };
+    picked.forEach((p) => used.add(p.name));
+    const times = stopTimes(slot, picked.length);
+    const stops = picked.map((p, i) => ({ place: p.name, time: times[i] }));
+    return {
+      title: picked.length === 1 ? picked[0].name : picked.map((p) => SHORT(p.name)).join(" + "),
+      summary: `${picked.map((p) => p.name).join(", then ")} on ${slot}.`,
+      stops,
+      est_cost_per_person: cost,
+      why_fits: `${VIBE[picked.length] ?? VIBE[3]} ${picked.length > 1 ? "Mixes " + [...new Set(picked.map((p) => p.category))].join(" and ") : "Keeps it to one " + picked[0].category + " stop"}, and stays inside the ${tier} group budget.`,
+    };
   };
-  return [build("Easy night out", 0, 2), build("Low-key hangout", 1, 1), build("Big night", 2, 3)];
+  const all = [build(0, 2), build(1, 1), build(2, 3)];
+  // With few places left (e.g. after a veto round) plans can repeat. Keep only distinct ones.
+  const seen = new Set<string>();
+  return all.filter((d) => { const k = d.stops.map((x) => x.place).sort().join("|"); return !seen.has(k) && !!seen.add(k); });
 }
 
-export async function generatePlans(ctx: { city: string; slot: string; tier: string; interests: string[]; places: Place[] }): Promise<PlanDraft[]> {
+export async function generatePlans(ctx: { city: string; slot: string; tier: string; interests: string[]; places: Place[]; avoid?: string[] }): Promise<PlanDraft[]> {
   if (process.env.USE_MOCKS !== "true" && process.env.GEMINI_API_KEY) {
-    const prompt = `Plan 3 distinct group hangouts in ${ctx.city} for ${ctx.slot}. Max budget tier ${ctx.tier} (never exceed). Shared interests: ${ctx.interests.join(", ") || "any"}. Use ONLY these places (price tier $=~12, $$=~25, $$$=~50 per person): ${JSON.stringify(ctx.places)}. Each plan has ordered stops with times, an estimated cost per person, and why it fits.`;
+    const prompt = `Plan 3 distinct group hangouts in ${ctx.city} for ${ctx.slot}. Max budget tier ${ctx.tier} (never exceed). Shared interests: ${ctx.interests.join(", ") || "any"}. Use ONLY these places (price tier $=~12, $$=~25, $$$=~50 per person): ${JSON.stringify(ctx.places)}. Each plan has ordered stops with times, an estimated cost per person, and why it fits (one or two sentences naming the shared time, interests or budget).${ctx.avoid?.length ? ` The group vetoed these places last time, do not use them: ${ctx.avoid.join(", ")}.` : ""}`;
     for (let i = 0; i < 2; i++) {
       try { return await callGemini(prompt); } catch {}
     }

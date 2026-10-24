@@ -12,12 +12,16 @@
   --sage-ink: #1b3a1e;
   --pink: #f3a5bc;
   --deep-pink: #e0709a;
+  --peach: #ffc49b;
+  --wine: #8a1f47;
+  --field: #6f98a2;
   --bg: #ffffff;
   --pink-soft: color-mix(in srgb, var(--pink) 40%, white);
   --mint-soft: color-mix(in srgb, var(--mint) 55%, white);
   /* TODO(decision): fonts. Candidates: Instrument Serif + DM Sans, Bricolage Grotesque + Instrument Sans, Fraunces + Figtree. */
   --font-display: "Fraunces", Georgia, serif;
   --font-body: "Figtree", system-ui, sans-serif;
+  --font-brand: "Plus Jakarta Sans", system-ui, sans-serif; /* wordmark */
 }
 :root[data-palette="a"] {
   --ink: #0f172a;

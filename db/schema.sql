@@ -60,3 +60,20 @@ create table if not exists payments (
   status text not null default 'owed' check (status in ('owed','paid')),
   unique (round_id, user_id)
 );
+
+-- Plans flow (screens 8-10). Safe to re-run on existing data.
+alter table groups add column if not exists vote_hours int not null default 24;
+alter table plan_rounds add column if not exists slot text;
+alter table plan_rounds add column if not exists attempt int not null default 1;
+alter table plan_rounds add column if not exists excluded text[] not null default '{}';
+alter table plan_rounds add column if not exists vote_deadline timestamptz;
+alter table plan_rounds add column if not exists payer_id int references users(id);
+alter table plan_rounds add column if not exists split_mode text not null default 'even';
+alter table plan_rounds add column if not exists requests_sent boolean not null default false;
+create table if not exists stop_skips (
+  round_id int references plan_rounds(id) on delete cascade,
+  user_id int references users(id) on delete cascade,
+  stop_index int not null,
+  primary key (round_id, user_id, stop_index)
+);
+alter table payments add column if not exists transfer_id text;

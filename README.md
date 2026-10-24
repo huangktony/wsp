@@ -108,3 +108,16 @@ Search the code for these tags:
 
 - `TODO(decision)`: palette (B is the default), fonts, which spending screen design wins, even split vs split by level, and a real city lookup.
 - `TODO(verify)`: check the Nessie endpoints, the SerpApi response fields, and the Gemini model name against current docs. These have only been tested with mock data.
+
+## Plans flow (screens 8-10)
+
+Owned by person 4. Files: `app/groups/[id]/finding`, `plans`, `final`, `app/api/groups/[id]/plans|final|split`, `app/api/plans/[id]/vote`, `app/api/payments`, `lib/pipeline.ts`, `lib/slot.ts`.
+
+- **Finding plans** picks the slot most members share, uses the group's lowest budget level, searches places and writes 3 plans. If two people open it at once they share one search.
+- **Voting**: approve or veto each plan (tap again to undo). Tallies stay hidden until voting closes. Voting closes at the deadline (`groups.vote_hours`, default 24) or once everyone has voted on every plan. The creator can also tap **Close voting now**.
+- **Winner** = most approvals, then fewest vetoes, then cheapest. If every plan was vetoed and none approved, the app makes new plans that leave out those places, and the deadline resets.
+- **Split**: the creator pays up front and picks **Split evenly** or **By item**. Anyone can tick stops they'll skip. Sending requests locks the split. Paying back uses a Nessie transfer when both accounts are real.
+
+Round status values (`plan_rounds.status`): `generating`, `voting`, `vetoed`, `final`, `failed`. Group screens can use these for the card status.
+
+For person 2: the create-group voting deadline (6/12/24/48h) should be saved to `groups.vote_hours`.

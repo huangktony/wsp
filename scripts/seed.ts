@@ -11,7 +11,7 @@ const USERS = [
 ];
 
 async function main() {
-  await pool.query("truncate payments, votes, plans, plan_rounds, memberships, groups, users restart identity cascade");
+  await pool.query("truncate stop_skips, payments, votes, plans, plan_rounds, memberships, groups, users restart identity cascade");
   const hash = await bcrypt.hash("demo1234", 8);
   const ids: number[] = [];
   for (const u of USERS) {
@@ -26,7 +26,11 @@ async function main() {
   for (const id of ids.slice(0, 2)) await q("insert into memberships(group_id,user_id,availability) values($1,$2,'[]')", [g2!.id, id]);
 
   const { runFindPlans } = await import("../lib/pipeline");
-  await runFindPlans(g1!.id);
+  const round = await runFindPlans(g1!.id);
+  // Ravi and Mia have already voted, so the demo shows "2 of 4 voted". Dana (demo) and Jon still need to vote.
+  const plans = await q<{ id: number }>("select id from plans where round_id=$1 order by id", [round]);
+  const votes: [number, string[]][] = [[ids[1], ["approve", "pass", "approve"]], [ids[2], ["approve", "approve", "pass"]]];
+  for (const [uid, vals] of votes) for (let i = 0; i < plans.length; i++) await q("insert into votes(plan_id,user_id,value) values($1,$2,$3)", [plans[i].id, uid, vals[i]]);
   console.log("seeded. demo login: demo@wsp.app / demo1234");
   await pool.end();
 }

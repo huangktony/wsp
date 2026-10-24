@@ -50,3 +50,21 @@ export async function getSeries(accountId: string | null, days: number) {
   // TODO(verify): real balance history and credit card / loan debt. Nessie has no history endpoint, so the series is synthetic either way.
   return mockSeries(accountId ?? "demo", days);
 }
+
+/**
+ * Pays a friend back for a hangout: a Nessie transfer from the payer's account to the payee's account.
+ * TODO(verify): POST /accounts/{id}/transfers body fields against current Nessie docs.
+ * Returns a transfer id, or a mock id when mocks are on or either account is a mock.
+ */
+export async function sendTransfer(fromAccount: string | null, toAccount: string | null, amount: number, description: string): Promise<string> {
+  if (fromAccount && toAccount && !fromAccount.startsWith("mock-") && !toAccount.startsWith("mock-") && !useMock()) {
+    try {
+      const t = await nj(`/accounts/${fromAccount}/transfers`, {
+        method: "POST",
+        body: JSON.stringify({ medium: "balance", payee_id: toAccount, amount, transaction_date: new Date().toISOString().slice(0, 10), description }),
+      });
+      if (t.objectCreated?._id) return t.objectCreated._id;
+    } catch {}
+  }
+  return `mock-transfer-${Math.random().toString(36).slice(2, 10)}`;
+}

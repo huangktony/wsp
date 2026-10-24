@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { q, q1 } from "@/lib/db";
 import { fail, json, requireUser } from "@/lib/api";
+import { generateInviteCode } from "@/lib/inviteCode";
 
 // TODO(decision): no geocoder wired up; known cities resolve, anything else falls back to Austin.
 const CITIES: Record<string, [number, number]> = { austin: [30.2672, -97.7431], dallas: [32.7767, -96.797], houston: [29.7604, -95.3698], "san antonio": [29.4241, -98.4936], "new york": [40.7128, -74.006] };
-const code = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 export async function GET() {
   const uid = await requireUser();
@@ -22,11 +22,21 @@ const Body = z.object({ name: z.string().min(1), city: z.string().min(1) });
 export async function POST(req: Request) {
   const uid = await requireUser();
   if (typeof uid !== "number") return uid;
-  const p = Body.safeParse(await req.json().catch(() => null));
+  const body = await req.json().catch(() => null);
+  const p = Body.safeParse(body);
   if (!p.success) return fail("name and city required");
   const key = p.data.city.toLowerCase().split(",")[0].trim();
   const [lat, lng] = CITIES[key] ?? CITIES.austin;
-  const g = await q1<{ id: number }>("insert into groups(name,city,lat,lng,invite_code,created_by) values($1,$2,$3,$4,$5,$6) returning id", [p.data.name, p.data.city, lat, lng, code(), uid]);
+  let g: { id: number; invite_code: string } | null;
+  for (let attempt = 0; ; attempt++) {
+    const inviteCode = generateInviteCode(attempt < 10 ? 3 : 4);
+    // Target only invite-code conflicts; unrelated database errors must surface.
+    // The database arbitrates uniqueness atomically, including concurrent creates.
+    g = await q1<{ id: number; invite_code: string }>(
+      "insert into groups(name,city,lat,lng,invite_code,created_by) values($1,$2,$3,$4,$5,$6) on conflict (invite_code) do nothing returning id,invite_code",
+      [p.data.name, p.data.city, lat, lng, inviteCode, uid]);
+    if (g) break;
+  }
   await q("insert into memberships(group_id,user_id) values($1,$2)", [g!.id, uid]);
-  return json({ id: g!.id });
+  return json({ id: g.id, inviteCode: g.invite_code });
 }

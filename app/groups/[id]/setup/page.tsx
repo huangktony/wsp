@@ -22,8 +22,9 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
         <section><span className="label">Interests</span><div className="flex flex-wrap gap-2">{INTERESTS.map((s) => <Chip key={s} v={s} on={it.includes(s)} click={() => setIt(toggle(it, s))} />)}</div></section>
         <section><span className="label">Max distance: {mi} mi</span><input type="range" min={1} max={30} value={mi} onChange={(e) => setMi(+e.target.value)} className="w-full accent-[var(--sage)]" /></section>
         <section className="card flex items-center justify-between"><span className="text-sm text-muted">Your comfort level (only you see this)</span><TierBadge tier={data?.budget_tier} /></section>
+        {data && !av.length && <p className="text-sm text-muted">Pick at least one time you're free.</p>}
         <Err msg={err} />
-        <button className="btn" onClick={() => api(`/api/groups/${id}/me`, "PUT", { availability: av, interests: it, max_distance_mi: mi }).then(() => r.push(`/groups/${id}`)).catch((e) => setErr(e.message))}>Save</button>
+        <button className="btn" disabled={!data || !av.length} onClick={() => api(`/api/groups/${id}/me`, "PUT", { availability: av, interests: it, max_distance_mi: mi }).then(() => r.push(`/groups/${id}`)).catch((e) => setErr(e.message))}>Save</button>
       </div>
     </Page>
   );

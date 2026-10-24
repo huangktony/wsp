@@ -6,11 +6,18 @@ import { CategoryBars } from "@/components/CategoryBars";
 import { TierBadge } from "@/components/TierBadge";
 import { api, useApi } from "@/lib/client";
 
-// TODO(decision): mockup A (overview) is built; B (tier gauge) and C (range switcher + weekly bars) are partially covered by the range switcher below.
 export default function Spending() {
   const [days, setDays] = useState(30);
   const { data, reload } = useApi<any>(`/api/me/spending?days=${days}`);
   if (!data) return <Page title="Budget" tabs>Loading…</Page>;
+  if (!data.linked) {
+    return (
+      <Page title="Spending and budget" tabs>
+        <p className="mb-4 text-muted">Link a demo account to see your spending and budget level.</p>
+        <button className="btn" onClick={() => api("/api/bank/link", "POST").then(reload)}>Link demo bank account</button>
+      </Page>
+    );
+  }
   const bal = data.balance.at(-1)?.value ?? 0, debt = data.debt.at(-1)?.value ?? 0;
   return (
     <Page title="Spending and budget" tabs>
@@ -19,7 +26,6 @@ export default function Spending() {
         <p className="font-display text-4xl font-bold">${(bal - debt).toLocaleString()}</p>
         <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted">Your fun budget <TierBadge tier={data.tier} /> avg ${data.avgOuting ?? "–"} per outing</div>
       </div>
-      {!data.linked && <button className="btn mb-4" onClick={() => api("/api/bank/link", "POST").then(reload)}>Link demo bank account</button>}
       <div className="mb-3 flex gap-2">
         {[7, 14, 30].map((d) => <button key={d} onClick={() => setDays(d)} className={`rounded-full border px-4 py-1 text-sm font-semibold ${days === d ? "border-sage bg-sage text-sageink" : "border-line"}`}>{d}d</button>)}
       </div>

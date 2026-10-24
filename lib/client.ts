@@ -22,6 +22,5 @@ export function useApi<T = any>(path: string, pollMs = 0) {
   return { data, error, reload: load };
 }
 
-export const INTERESTS = ["food", "coffee", "outdoors", "entertainment"];
-export const SLOTS = ["Fri evening", "Sat afternoon", "Sat evening", "Sun afternoon"];
+export { INTERESTS, SLOTS } from "./constants";
 export const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);

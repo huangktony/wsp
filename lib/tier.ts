@@ -6,8 +6,11 @@ export type Tier = "$" | "$$" | "$$$";
 const ORDER: Tier[] = ["$", "$$", "$$$"];
 const FUN = ["food", "entertainment"];
 
+/** Upper bounds (inclusive) of $ and $$. Anything above the last is $$$. */
+export const TIER_CUTOFFS = [12, 30];
+
 export function tierFromAvg(avg: number): Tier {
-  return avg <= 12 ? "$" : avg <= 30 ? "$$" : "$$$";
+  return avg <= TIER_CUTOFFS[0] ? "$" : avg <= TIER_CUTOFFS[1] ? "$$" : "$$$";
 }
 export const lowestTier = (tiers: (string | null)[]): Tier =>
   tiers.filter((t): t is Tier => !!t && ORDER.includes(t as Tier)).sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0] ?? "$$";

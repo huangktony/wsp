@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* TODO(decision): Palette B (cici) is default; Palette A below is swappable via data-palette="a" on <html>. */
+:root {
+  --ink: #28536b;
+  --muted: #35607a;
+  --border: #b4cccf;
+  --mint: #cbe6c7;
+  --sage: #8fb78f;
+  --sage-ink: #1b3a1e;
+  --pink: #f3a5bc;
+  --deep-pink: #e0709a;
+  --bg: #ffffff;
+  --pink-soft: color-mix(in srgb, var(--pink) 40%, white);
+  --mint-soft: color-mix(in srgb, var(--mint) 55%, white);
+  /* TODO(decision): fonts. Candidates: Instrument Serif + DM Sans, Bricolage Grotesque + Instrument Sans, Fraunces + Figtree. */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Figtree", system-ui, sans-serif;
+}
+:root[data-palette="a"] {
+  --ink: #0f172a;
+  --muted: #475569;
+  --border: #e2e8f0;
+  --mint: #dbeafe;
+  --sage: #1d4ed8;
+  --sage-ink: #ffffff;
+  --pink: #93c5fd;
+  --deep-pink: #3b82f6;
+}
+
+html, body { background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+body { margin: 0; overflow-x: hidden; }
+h1, h2, h3 { font-family: var(--font-display); }
+
+@layer components {
+  .btn { @apply flex h-14 w-full items-center justify-center rounded-2xl bg-sage text-base font-semibold text-sageink active:opacity-80 disabled:opacity-50; }
+  .btn-ghost { @apply flex h-14 w-full items-center justify-center rounded-2xl border border-line bg-white text-base font-semibold text-ink active:opacity-80; }
+  .card { @apply rounded-card border border-line bg-white p-4; }
+  .input { @apply h-14 w-full rounded-2xl border border-line bg-white px-4 text-base text-ink outline-none focus:border-sage; }
+  .chip { @apply inline-flex items-center rounded-full bg-mint px-3 py-1 text-xs font-semibold tracking-wide text-sageink; }
+  .chip-pink { @apply inline-flex items-center rounded-full bg-pinksoft px-3 py-1 text-xs font-semibold tracking-wide text-ink; }
+  .label { @apply mb-1 block text-sm font-semibold text-muted; }
+}

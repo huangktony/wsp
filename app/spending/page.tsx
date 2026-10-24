@@ -1,0 +1,34 @@
+"use client";
+import { useState } from "react";
+import { Page } from "@/components/Page";
+import { BalanceDebtChart } from "@/components/BalanceDebtChart";
+import { CategoryBars } from "@/components/CategoryBars";
+import { TierBadge } from "@/components/TierBadge";
+import { api, useApi } from "@/lib/client";
+
+// TODO(decision): mockup A (overview) is built; B (tier gauge) and C (range switcher + weekly bars) are partially covered by the range switcher below.
+export default function Spending() {
+  const [days, setDays] = useState(30);
+  const { data, reload } = useApi<any>(`/api/me/spending?days=${days}`);
+  if (!data) return <Page title="Budget" tabs>Loading…</Page>;
+  const bal = data.balance.at(-1)?.value ?? 0, debt = data.debt.at(-1)?.value ?? 0;
+  return (
+    <Page title="Spending and budget" tabs>
+      <div className="card mb-4 text-center">
+        <p className="text-sm font-semibold text-muted">Net position</p>
+        <p className="font-display text-4xl font-bold">${(bal - debt).toLocaleString()}</p>
+        <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted">Your fun budget <TierBadge tier={data.tier} /> avg ${data.avgOuting ?? "–"} per outing</div>
+      </div>
+      {!data.linked && <button className="btn mb-4" onClick={() => api("/api/bank/link", "POST").then(reload)}>Link demo bank account</button>}
+      <div className="mb-3 flex gap-2">
+        {[7, 14, 30].map((d) => <button key={d} onClick={() => setDays(d)} className={`rounded-full border px-4 py-1 text-sm font-semibold ${days === d ? "border-sage bg-sage text-sageink" : "border-line"}`}>{d}d</button>)}
+      </div>
+      <div className="card mb-4"><BalanceDebtChart balance={data.balance} debt={data.debt} /></div>
+      <div className="card mb-4"><h2 className="mb-3 font-bold">By category</h2><CategoryBars data={data.categories} /></div>
+      <div className="card"><h2 className="mb-2 font-bold">Recent</h2>
+        <ul className="space-y-1 text-sm">{data.recent.map((p: any, i: number) => <li key={i} className="flex justify-between"><span>{p.merchant}</span><span>${p.amount}</span></li>)}</ul>
+      </div>
+      <p className="mt-3 text-center text-xs text-muted">Only you can see this. Friends see the group's lowest tier, nothing else.</p>
+    </Page>
+  );
+}

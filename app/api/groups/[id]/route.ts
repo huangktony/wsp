@@ -34,7 +34,7 @@ export async function GET(
     [id],
   );
 
-  const { votedMemberIds, ...participation } = await getVotingParticipation(
+  const { votedMemberIds, confirmedMemberIds, ...participation } = await getVotingParticipation(
     id,
     round,
   );

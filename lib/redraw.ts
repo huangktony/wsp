@@ -10,18 +10,20 @@ export class RedrawError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-export type RedrawStatus = { locked: boolean; votes: number; members: number; needed: number; mine: boolean };
+/** `locked` is why a redraw is no longer possible, or false. */
+export type RedrawStatus = { locked: false | "confirmed" | "locked"; votes: number; members: number; needed: number; mine: boolean };
 
 /** Counts only, never names. null unless the latest round is final. */
 export async function redrawStatus(groupId: number, userId: number): Promise<RedrawStatus | null> {
   const r = await q1<any>(
-    `select r.id,r.status,r.requests_sent,
+    `select r.id,r.status,r.requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at,
        (select count(*)::int from memberships where group_id=r.group_id) members,
        (select count(*)::int from redraw_votes v join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where v.round_id=r.id) votes,
        exists(select 1 from redraw_votes where round_id=r.id and user_id=$2) mine
      from plan_rounds r where r.group_id=$1 and r.status<>'failed' order by r.id desc limit 1`, [groupId, userId]);
   if (!r || r.status !== "final") return null;
-  return { locked: r.requests_sent, votes: r.votes, members: r.members, needed: redrawThreshold(r.members), mine: r.mine };
+  const gate = redrawGate(r);
+  return { locked: gate === "ok" ? false : gate === "confirmed" ? "confirmed" : "locked", votes: r.votes, members: r.members, needed: redrawThreshold(r.members), mine: r.mine };
 }
 
 export type ToggleResult = ({ started: false } & RedrawStatus) | { started: true; roundId: number; oldRoundId: number };
@@ -34,7 +36,7 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
     await c.query("select pg_advisory_xact_lock(4242, $1)", [groupId]);
     if (!(await c.query("select 1 from memberships where group_id=$1 and user_id=$2", [groupId, userId])).rows.length) throw new RedrawError("not in this group", 403);
 
-    const last = (await c.query("select id,status,attempt,excluded,requests_sent from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
+    const last = (await c.query("select id,status,attempt,excluded,requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
     const gate = redrawGate(last);
     if (gate !== "ok") throw new RedrawError(REDRAW_MESSAGES[gate], 409);
 
@@ -50,9 +52,14 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
       return { started: false, locked: false, votes: tally.votes, members: tally.members, needed: redrawThreshold(tally.members), mine: !removed.rowCount };
     }
 
-    // Threshold reached. Flip the old round in ONE conditional statement: if the payer's "send" got there first, this matches nothing.
-    const flipped = await c.query("update plan_rounds set status='redrawn' where id=$1 and status='final' and requests_sent=false returning winner_plan_id", [last.id]);
-    if (!flipped.rowCount) throw new RedrawError(REDRAW_MESSAGES.locked, 409);
+    // Threshold reached. Flip the old round in ONE conditional statement: if the payer's "send" or the creator's "confirm" got there
+    // first, this matches nothing. confirmed_at is read through JSON so this works before the vote confirmation migration.
+    const flipped = await c.query("update plan_rounds r set status='redrawn' where id=$1 and status='final' and requests_sent=false and to_jsonb(r)->>'confirmed_at' is null returning winner_plan_id", [last.id]);
+    if (!flipped.rowCount) {
+      const now = (await c.query("select status,requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at from plan_rounds r where id=$1", [last.id])).rows[0];
+      const why = redrawGate(now);
+      throw new RedrawError(REDRAW_MESSAGES[why === "ok" ? "locked" : why], 409);
+    }
     const places = (await c.query("select distinct s->>'place' place from plans p, jsonb_array_elements(p.stops) s where p.id=$1", [flipped.rows[0].winner_plan_id])).rows.map((x) => x.place as string);
     const excluded = [...new Set([...(last.excluded ?? []), ...places])];
     const created = await c.query("insert into plan_rounds(group_id,status,attempt,excluded) values($1,'generating',$2,$3) returning id", [groupId, last.attempt + 1, excluded]);

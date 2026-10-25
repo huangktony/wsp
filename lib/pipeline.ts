@@ -7,13 +7,17 @@ import { categoriesFor, findPlaces, MissingCityError, PlaceSearchError, type Pla
 import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
 import { splitAmounts, type SplitMode } from "./split";
+import { confirmedMemberIds, planTallies } from "./voting";
+import { chooseWinner, isRemoved, shouldClose } from "./votingRules";
 
 /*
  * Plan round lifecycle (plan_rounds.status):
  *   generating -> voting -> final      (a plan won)
- *                        -> vetoed     (every plan was vetoed, none approved; next round leaves those places out)
+ *                        -> vetoed     (no plan was approved, or a majority vetoed every plan; next round leaves vetoed places out)
  *   generating -> failed               (generation crashed or stalled)
- * After final, the payer (group creator) picks even / by item split and sends requests (requests_sent).
+ * During voting a plan a majority vetoed is removed, and each member's votes are final once they confirm them.
+ * After final, the creator confirms the plan (confirmed_at), then the payer (group creator) picks even / by item split
+ * and sends requests (requests_sent).
  */
 
 /** Nothing within the group budget was found. The message is shown to the user as is. */
@@ -272,45 +276,34 @@ export async function runFindPlans(groupId: number): Promise<number> {
   return r.roundId;
 }
 
-/** Most approvals wins; then fewest vetoes; ties go to lower cost. */
-export async function pickWinner(roundId: number) {
-  const rows = await q<any>(
-    `select p.id, p.est_cost_per_person::float cost,
-       count(v.*) filter (where v.value='approve')::int approves, count(v.*) filter (where v.value='pass')::int vetoes
-     from plans p left join votes v on v.plan_id=p.id where p.round_id=$1 group by p.id order by approves desc, vetoes asc, cost asc, p.id asc`,
-    [roundId],
-  );
-
-  return {
-    id: rows[0].id as number,
-    approves: rows[0].approves as number,
-    allVetoed: rows.every((r) => r.approves === 0 && r.vetoes > 0),
-  };
-}
-
 /**
- * Closes voting when the deadline passed, everyone voted on every plan, or `force` (creator's "close now").
- * Safe to call on every poll: the status check in the update makes it run once.
+ * Closes voting when the deadline passed, every member confirmed their votes, every plan was removed by a majority veto,
+ * or `force` (creator's "close now"). Safe to call on every poll: the status check in the update makes it run once.
+ * The winner comes from current members' votes only (see chooseWinner).
  */
 export async function settleRound(roundId: number, force = false): Promise<string> {
   const r = await q1<any>(
     `select r.id,r.status,r.group_id,(r.vote_deadline < now()) expired,
-       (select count(*)::int from plans where round_id=r.id) plans,
-       (select count(*)::int from memberships where group_id=r.group_id) members,
-       (select count(*)::int from votes v join plans p on p.id=v.plan_id join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where p.round_id=r.id) votes
+       (select count(*)::int from memberships where group_id=r.group_id) members
      from plan_rounds r where r.id=$1`,
     [roundId],
   );
 
   if (!r || r.status !== "voting") return r?.status ?? "missing";
-  if (!force && !r.expired && r.votes < r.plans * r.members) return "voting";
 
-  const w = await pickWinner(roundId);
+  const tallies = await planTallies(roundId);
+  const remaining = tallies.filter((p) => !isRemoved(p.vetoes, r.members)).length;
+  const confirmed = (await confirmedMemberIds(roundId)).length;
+  if (!shouldClose({ force, expired: r.expired, members: r.members, confirmed, remaining })) return "voting";
 
-  if (w.allVetoed) {
+  const winner = chooseWinner(tallies, r.members);
+
+  if (winner == null) {
+    // Leave out the places the group vetoed. If nobody vetoed anything (nobody voted), keep them all available.
+    const vetoed = tallies.filter((p) => p.vetoes > 0).map((p) => p.id);
     const names = await q<{ place: string }>(
-      "select distinct s->>'place' place from plans p, jsonb_array_elements(p.stops) s where p.round_id=$1",
-      [roundId],
+      "select distinct s->>'place' place from plans p, jsonb_array_elements(p.stops) s where p.id = any($1::int[])",
+      [vetoed],
     );
     const done = await q1(
       "update plan_rounds set status='vetoed', excluded=excluded || $2::text[] where id=$1 and status='voting' returning id",
@@ -323,9 +316,9 @@ export async function settleRound(roundId: number, force = false): Promise<strin
 
   await q(
     `update plan_rounds set status='final', winner_plan_id=$2, payer_id=(select created_by from groups where id=$3) where id=$1 and status='voting'`,
-    [roundId, w.id, r.group_id],
+    [roundId, winner, r.group_id],
   );
-  return "final";
+  return (await q1<any>("select status from plan_rounds where id=$1", [roundId])).status;
 }
 
 /**

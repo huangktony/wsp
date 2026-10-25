@@ -19,7 +19,9 @@ function load(file, mocks, globals = {}) {
 }
 function fixture() {
   let user = 1, roundStatus = 'voting';
-  const votes = new Map();
+  const votes = new Map(), confirmations = new Set();
+  const roundOf = planId => plans.find(p => p.id === planId)?.round_id;
+  const isConfirmed = (planId, uid) => confirmations.has(`${roundOf(planId)}:${uid}`);
   const plans = [{ id: 101, round_id: 10 }, { id: 102, round_id: 10 }, { id: 201, round_id: 20 }];
   const members = [{ id: 1, name: 'One', setup_done: false }, { id: 2, name: 'Two', setup_done: false }];
   const api = { setupDone: async () => true, requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
@@ -38,14 +40,26 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
         assert.equal(result.status, 0, result.stderr);
         return JSON.parse(result.stdout);
       }
-      if (sql.startsWith('insert into votes')) votes.set(`${args[0]}:${args[1]}`, { plan_id: args[0], user_id: args[1], value: args[2] });
-      else if (sql.startsWith('delete from votes')) votes.delete(`${args[0]}:${args[1]}`);
-      else if (sql.includes('from plans p left join votes')) return plans.filter(p => p.round_id === args[0]).map(p => ({ ...p, my_vote: votes.get(`${p.id}:${args[1]}`)?.value ?? null, approve: 0, veto: 0 }));
+      // The vote route's write re-checks confirmation in SQL; mirror that here.
+      if (sql.startsWith('insert into votes')) { if (!isConfirmed(args[0], args[1])) votes.set(`${args[0]}:${args[1]}`, { plan_id: args[0], user_id: args[1], value: args[2] }); }
+      else if (sql.startsWith('delete from votes')) { if (!isConfirmed(args[0], args[1])) votes.delete(`${args[0]}:${args[1]}`); }
+      else if (sql.startsWith('insert into vote_confirmations')) confirmations.add(`${args[0]}:${args[1]}`);
+      else if (sql.includes('from vote_confirmations c join')) return members.filter(m => confirmations.has(`${args[0]}:${m.id}`)).map(m => ({ user_id: m.id }));
+      else if (sql.includes('from plans p join plan_rounds')) return plans.filter(p => p.round_id === args[0]).map(p => {
+        const current = [...votes.values()].filter(v => v.plan_id === p.id && members.some(m => m.id === v.user_id));
+        return { id: p.id, cost: 10, approves: current.filter(v => v.value === 'approve').length, vetoes: current.filter(v => v.value === 'pass').length };
+      });
+      else if (sql.includes('from votes v join plans p')) return [...votes.values()].filter(v => roundOf(v.plan_id) === args[0] && v.user_id === args[1]);
+      else if (sql.includes('from plans p left join votes')) return plans.filter(p => p.round_id === args[0]).map(p => ({ ...p, my_vote: votes.get(`${p.id}:${args[1]}`)?.value ?? null,
+        approve: [...votes.values()].filter(v => v.plan_id === p.id && v.value === 'approve' && members.some(m => m.id === v.user_id)).length,
+        veto: [...votes.values()].filter(v => v.plan_id === p.id && v.value === 'pass' && members.some(m => m.id === v.user_id)).length }));
       else if (sql.includes('from memberships m join users')) return members;
       else throw Error(`Unexpected query: ${sql}`);
       return [];
     },
     q1: async (sql, args) => {
+      if (sql.includes('to_regclass')) return { ok: true };
+      if (sql.includes('count(*)::int n from memberships')) return { n: members.length };
       if (sql.includes('from plans p join plan_rounds')) return { round_id: 10, group_id: 5, status: 'voting' };
       if (sql.includes('from groups')) return { name: 'Test group', created_by: 1 };
       if (sql.includes('from plan_rounds')) return roundStatus === null ? null : { id: 10, status: roundStatus, seconds_left: 3600 };
@@ -54,6 +68,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
     },
   };
   const mocks = { '@/lib/finding': load('lib/finding.ts', {}), '@/lib/serpapi': { MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} }, '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
+  mocks['@/lib/votingRules'] = load('lib/votingRules.ts', {});
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
@@ -62,9 +77,11 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
   const post = load('app/api/plans/[id]/vote/route.ts', mocks).POST;
   const get = load('app/api/groups/[id]/plans/route.ts', mocks).GET;
-  return { votes, setRound: status => roundStatus = status,
+  const ballot = load('app/api/groups/[id]/ballot/route.ts', mocks).POST;
+  return { votes, confirmations, setRound: status => roundStatus = status,
     home: async () => (await home({}, { params: Promise.resolve({ id: '5' }) })).body,
     setUser: id => user = id,
+    confirm: () => ballot({}, { params: Promise.resolve({ id: '5' }) }),
     vote: (id, value) => post({ json: async () => ({ value }) }, { params: Promise.resolve({ id: String(id) }) }),
     read: async () => (await get({}, { params: Promise.resolve({ id: '5' }) })).body };
 }
@@ -101,6 +118,47 @@ test('progress excludes former members and votes from other rounds', async () =>
   assert.equal((await f.read()).voted, 0);
   f.setUser(99);
   assert.equal((await f.vote(101, 'approve')).status, 403);
+});
+
+test('a majority veto removes a plan: it is flagged, closed to votes, and left out of the ballot', async () => {
+  const f = fixture();
+  await f.vote(101, 'veto');
+  assert.equal((await f.read()).plans[0].removed, false); // 1 of 2 is not a majority
+  f.setUser(2);
+  await f.vote(101, 'veto');
+  const data = await f.read();
+  assert.equal(data.plans[0].removed, true);
+  assert.equal(data.plans[0].veto, undefined); // still no tallies while voting is open
+  assert.equal(data.plans[1].removed, false);
+  const blocked = await f.vote(101, 'approve');
+  assert.equal(blocked.status, 409);
+  assert.equal(f.votes.get('101:2').value, 'pass');
+  // Confirming needs only the plans still in the running.
+  assert.equal((await f.confirm()).status, 409);
+  await f.vote(102, 'approve');
+  assert.equal((await f.confirm()).body.ok, true);
+});
+
+test('confirmed votes are final and counted separately from voting', async () => {
+  const f = fixture();
+  assert.equal((await f.confirm()).status, 409); // nothing voted yet
+  await f.vote(101, 'approve');
+  assert.equal((await f.confirm()).status, 409); // 102 still has no vote
+  await f.vote(102, 'veto');
+  assert.equal((await f.confirm()).body.ok, true);
+  let data = await f.read();
+  assert.equal(data.myConfirmed, true);
+  assert.equal(data.confirmed, 1);
+  assert.equal(data.voted, 1);
+  assert.equal((await f.vote(101, 'veto')).status, 409);
+  assert.equal((await f.vote(102, null)).status, 409);
+  assert.equal(f.votes.get('101:1').value, 'approve');
+  assert.equal(f.votes.get('102:1').value, 'pass');
+  f.setUser(2);
+  data = await f.read();
+  assert.equal(data.myConfirmed, false);
+  assert.equal(data.confirmed, 1);
+  assert.equal((await f.vote(101, 'approve')).body.ok, true);
 });
 
 function hooks() {
@@ -231,7 +289,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
   assert.ok(text(tree).includes('1 of 2 ready · voting'));
   assert.ok(text(tree).includes('Voted'));
   assert.ok(text(tree).includes('Not voted yet'));
-  assert.ok(text(tree).includes('Two has not voted yet. Voting closes at the deadline or once everyone has voted on every plan.'));
+  assert.ok(text(tree).includes('Two has not voted yet. Voting closes at the deadline or once everyone has confirmed their votes.'));
   assert.equal(nodes(tree).find(n => n.props?.role === 'progressbar').props['aria-valuenow'], 50);
   f.setUser(2);
   await f.vote(101, 'veto');

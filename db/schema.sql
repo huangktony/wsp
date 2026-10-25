@@ -117,3 +117,13 @@ alter table plan_rounds add column if not exists bill_total numeric;
 
 -- Snapshot members' search preferences at round creation (server-only; never returned to clients).
 alter table plan_rounds add column if not exists search_settings jsonb;
+-- Confirmed ballots: once a member confirms, their votes for that round are final. Also in db/migrations/20261025_vote_confirmations.sql.
+create table if not exists vote_confirmations (
+  round_id int references plan_rounds(id) on delete cascade,
+  user_id int references users(id) on delete cascade,
+  confirmed_at timestamptz not null default now(),
+  primary key (round_id, user_id)
+);
+-- The organizer confirms the winning plan. Non-null confirmed_at = saved as final: no redraw, and payment requests can be sent.
+alter table plan_rounds add column if not exists confirmed_at timestamptz;
+alter table plan_rounds add column if not exists confirmed_by int references users(id);

@@ -219,6 +219,7 @@ test('server advisory lock gives simultaneous callers one generation owner and r
     './roundSettings': settingsModule,
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './tier': {},
     './serpapi': {},
     './price': {},
@@ -279,7 +280,7 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
     '@/lib/finding': finding,
     '@/lib/db': {},
-    '@/lib/voting': {},
+    '@/lib/voting': {}, '@/lib/votingRules': load('lib/votingRules.ts'),
     '@/lib/redraw': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
@@ -316,7 +317,7 @@ test('POST find-plans on a FINAL plan is refused with 409: only the group redraw
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
     '@/lib/finding': finding,
     '@/lib/db': {},
-    '@/lib/voting': {},
+    '@/lib/voting': {}, '@/lib/votingRules': load('lib/votingRules.ts'),
     '@/lib/redraw': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
@@ -599,6 +600,7 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
     './roundSettings': settingsModule,
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './tier': {},
     './serpapi': { MissingCityError },
     './price': {},
@@ -624,6 +626,7 @@ test('generation uses the round snapshot for search and prompt, not later group 
     './roundSettings': settingsModule,
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './db': {
       q1: async sql => {
         assert.ok(sql.includes("to_jsonb(r)->>'search_city' search_city"));
@@ -741,6 +744,7 @@ test('pending migration rejects regenerating untracked legacy rounds before inse
     './roundSettings': settingsModule,
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './tier': {},
     './serpapi': {},
     './price': {},
@@ -774,6 +778,7 @@ test('legacy generation passes Austin coordinates and city to search and plan wr
       './roundSettings': settingsModule,
       './finding': finding,
       './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
       './db': {
         q1: async () => ({
           ...snapshot,
@@ -858,7 +863,7 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
     '@/lib/finding': finding,
     '@/lib/db': {},
-    '@/lib/voting': {},
+    '@/lib/voting': {}, '@/lib/votingRules': load('lib/votingRules.ts'),
     '@/lib/redraw': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
@@ -913,6 +918,7 @@ test('editing any search setting creates a fresh round with current Houston dist
     './db': { pool },
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './tier': {},
     './serpapi': {},
     './price': {},
@@ -972,6 +978,7 @@ test('generation uses saved preferences and persists a disclosed radius expansio
     './roundSettings': settingsModule,
     './finding': finding,
     './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
     './db': {
       q1: async () => ({
         group_id: 5,

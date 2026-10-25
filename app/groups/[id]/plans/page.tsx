@@ -10,7 +10,8 @@ import { api, useApi } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 
-// Screen 9: Plans and voting. Approve or veto each plan. Votes are anonymous until voting closes.
+// Screen 9: Plans and voting. Approve or veto each plan, then confirm. Votes are anonymous until voting closes, and final once confirmed.
+// A plan a majority vetoed is removed from the list.
 type Vote = "approve" | "veto" | null;
 
 function left(ms: number) {
@@ -42,6 +43,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const savingRef = useRef(new Set<number>());
   const [saving, setSaving] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [confirming, setConfirming] = useState(false);
 
   // Stop overriding a vote once a fresh server response confirms it. Keep an
   // in-flight mutation's override even if an older poll arrives meanwhile.
@@ -74,9 +76,10 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   if (!data) return <div className={inter.className}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : <PlansSkeleton />}</Page></div>;
   if (!data.round || status !== "voting") return <div className={inter.className}><Page back={`/groups/${id}`}>{data.round ? <PlansSkeleton /> : "No plans yet."}</Page></div>;
 
+  const locked = data.myConfirmed;
   const voteOf = (p: any): Vote => (p.id in mine ? mine[p.id] : p.my_vote ?? null);
   const vote = (p: any, v: Exclude<Vote, null>) => {
-    if (savingRef.current.has(p.id)) return;
+    if (locked || savingRef.current.has(p.id)) return;
     const next = voteOf(p) === v ? null : v; // tap again to undo
     savingRef.current.add(p.id);
     setSaving([...savingRef.current]);
@@ -88,6 +91,14 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
       .finally(() => { savingRef.current.delete(p.id); setSaving([...savingRef.current]); });
   };
   const close = () => api(`/api/groups/${id}/final`, "POST").then(reload).catch((e) => setErr(e.message));
+  const confirm = () => {
+    setConfirming(true);
+    setErr("");
+    api(`/api/groups/${id}/ballot`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setConfirming(false));
+  };
+  const open = data.plans.filter((p: any) => !p.removed);
+  const removed = data.plans.length - open.length;
+  const openCount = open.filter((p: any) => voteOf(p)).length;
   const myCount = data.plans.filter((p: any) => voteOf(p)).length;
   const serverHasMyVote = data.plans.some((p: any) => p.my_vote != null);
   const voted = Math.max(0, Math.min(data.memberCount, data.voted - Number(serverHasMyVote) + Number(myCount > 0)));
@@ -97,15 +108,21 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
       {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
       {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       <p className="text-[15px] font-semibold text-secondary">{data.group.name}{data.round.attempt > 1 && ` · Round ${data.round.attempt}`}</p>
-      <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">{data.plans.length} {data.plans.length === 1 ? "plan" : "plans"} for {data.round.slot}</h1>
+      <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">{open.length} {open.length === 1 ? "plan" : "plans"} for {data.round.slot}</h1>
       <div className="mb-5 flex flex-wrap gap-2 [&>span]:text-xs [&_span]:font-bold">
         <span className="chip-pink">{left(deadline - now)}</span>
         <span className="chip" aria-live="polite">{voted} of {data.memberCount} have voted</span>
+        {data.confirmed > 0 && <span className="chip">{data.confirmed} confirmed</span>}
         <TierBadge tier={data.round.group_tier} label="Group budget" />
       </div>
 
+      {removed > 0 && (
+        <p role="status" className="mb-4 text-sm text-secondary">
+          {removed} {removed === 1 ? "plan was" : "plans were"} removed because a majority vetoed {removed === 1 ? "it" : "them"}.
+        </p>
+      )}
       <div className="space-y-4">
-        {data.plans.map((p: any) => {
+        {open.map((p: any) => {
           const v = voteOf(p);
           return (
             <article key={p.id} className={`card ${v === "approve" ? "border-2 border-sage" : v === "veto" ? "border-2 border-deep" : ""}`}>
@@ -119,9 +136,9 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
               </ol>
               <p className="text-sm leading-[1.45] text-secondary"><b className="font-bold">Why:</b> {p.why_fits}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button disabled={saving.includes(p.id)} aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
+                <button disabled={locked || saving.includes(p.id)} aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
                   className={`h-12 rounded-2xl text-[15px] font-bold ${v === "approve" ? "bg-sage text-sageink" : "border border-line"}`}>✓ Approve</button>
-                <button disabled={saving.includes(p.id)} aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
+                <button disabled={locked || saving.includes(p.id)} aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
                   className={`h-12 rounded-2xl text-[15px] font-bold ${v === "veto" ? "bg-deep text-white" : "border border-line"}`}>✕ Veto</button>
               </div>
             </article>
@@ -130,9 +147,16 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
       </div>
 
       <Err msg={err || error} />
-      <p className="mt-5 text-center text-[13px] text-secondary">
-        {myCount < data.plans.length ? `You've voted on ${myCount} of ${data.plans.length} plans. ` : "You're done. "}
-        Votes are anonymous until the end. Voting closes at the deadline or once everyone has voted on every plan.
+      {locked ? (
+        <p role="status" className="mt-5 rounded-2xl bg-sage p-3 text-center text-sm font-semibold text-sageink">✓ Your votes are confirmed. Waiting for the others.</p>
+      ) : (
+        <button className="btn mt-5 text-[17px] font-bold" disabled={confirming || saving.length > 0 || openCount < open.length} onClick={confirm}>
+          {confirming ? "Confirming…" : "Confirm my votes"}
+        </button>
+      )}
+      <p className="mt-3 text-center text-[13px] text-secondary">
+        {locked ? "" : openCount < open.length ? `You've voted on ${openCount} of ${open.length} plans. ` : "Votes are final once you confirm. "}
+        Votes are anonymous until the end. Voting closes at the deadline or once everyone has confirmed their votes.
       </p>
       {data.isCreator && <button className="btn-ghost mt-4" onClick={close}>Close voting now</button>}
     </Page></div>

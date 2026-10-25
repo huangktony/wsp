@@ -10,7 +10,6 @@ export default {
         azure: "#B4CCCF",
         indigo: "#28536B",
         orchid: "#F3A5BC",
-        peach: "#FFC49B",
         secondary: "#35607A",
         maroon: "#8A1F47",
         orchidink: "#7A1A3F",

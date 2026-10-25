@@ -5,6 +5,7 @@ import { groupTier } from "./tier";
 import { categoriesFor, findPlaces, MissingCityError, PlaceSearchError, type Place } from "./serpapi";
 import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
+import { splitAmounts, type SplitMode } from "./split";
 
 /*
  * Plan round lifecycle (plan_rounds.status):
@@ -194,22 +195,6 @@ export async function computeSplit(roundId: number) {
   const skips = await q<{ user_id: number; stop_index: number }>("select user_id,stop_index from stop_skips where round_id=$1", [roundId]);
   const skipped = (uid: number) => skips.filter((s) => s.user_id === uid).map((s) => s.stop_index);
 
-  const rows = members.map((m) => {
-    const sk = skipped(m.id);
-    const cents = stops.reduce((a, s, i) => a + (sk.includes(i) ? 0 : Math.round(s.cost * 100)), 0);
-    return { user_id: m.id, name: m.name, skips: sk, going: sk.length < stops.length, itemCents: cents, cents: 0 };
-  });
-  const total = rows.reduce((a, x) => a + x.itemCents, 0);
-  if (r.split_mode === "items") rows.forEach((x) => (x.cents = x.itemCents));
-  else {
-    const going = rows.filter((x) => x.going);
-    const base = going.length ? Math.floor(total / going.length) : 0;
-    going.forEach((x, i) => (x.cents = base + (i < total - base * going.length ? 1 : 0)));
-  }
-  return {
-    mode: r.split_mode as "even" | "items",
-    payerId: r.payer_id as number,
-    total: total / 100,
-    rows: rows.map(({ itemCents, cents, ...x }) => ({ ...x, amount: cents / 100 })),
-  };
+  const { total, rows } = splitAmounts(stops.map((s) => s.cost), members.map((m) => ({ user_id: m.id, name: m.name, skips: skipped(m.id) })), r.split_mode);
+  return { mode: r.split_mode as SplitMode, payerId: r.payer_id as number, total, rows };
 }

@@ -82,9 +82,14 @@ alter table memberships add column if not exists comfort_tier text check (comfor
 -- Round search context; also available as a standalone migration in db/migrations/.
 -- Group coordinates remain NOT NULL and are geocoded during creation.
 
--- Legacy rounds intentionally keep NULL search_city: their true origin is unknown.
--- Reads fall back to the group city for legacy rounds; new rounds snapshot their search city.
+-- Legacy rounds keep NULL search_city and resolve to Austin, TX in application code.
+-- New rounds snapshot their search city; no database default or backfill.
 alter table plan_rounds add column if not exists search_city text;
 alter table plan_rounds add column if not exists search_distance_mi int;
 alter table plan_rounds add column if not exists sample_places boolean;
 alter table plan_rounds add column if not exists search_error text;
+-- When money moved, so the Spending screen can list it, and when the payer last nudged someone who hasn't paid back.
+alter table payments add column if not exists paid_at timestamptz;
+alter table payments add column if not exists reminded_at timestamptz;
+alter table plan_rounds add column if not exists requests_sent_at timestamptz;
+alter table plan_rounds add column if not exists bill_total numeric;

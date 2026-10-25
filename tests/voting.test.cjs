@@ -22,7 +22,7 @@ function fixture() {
   const votes = new Map();
   const plans = [{ id: 101, round_id: 10 }, { id: 102, round_id: 10 }, { id: 201, round_id: 20 }];
   const members = [{ id: 1, name: 'One', setup_done: false }, { id: 2, name: 'Two', setup_done: false }];
-  const api = { requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
+  const api = { setupDone: async () => true, requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
   const db = {
     q: async (sql, args) => {
       if (sql.includes('select m.user_id, exists')) {
@@ -147,6 +147,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/font/google': { Inter: () => ({ className: '' }) },
     react: { ...h.react, use: p => p, useMemo: fn => fn() },
     'react/jsx-runtime': require('react/jsx-runtime'),
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
@@ -214,6 +215,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push() {} }) },
     '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },
   }).default;

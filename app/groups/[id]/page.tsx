@@ -1,4 +1,5 @@
 "use client";
+import { useSetupGate } from "@/lib/useSetupGate";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,6 +23,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const { data: g, error } = useApi<any>(`/api/groups/${id}`, 4000, true);
   useFindingRedirect(id, g);
+  useSetupGate(id);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);

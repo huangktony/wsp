@@ -47,7 +47,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await q("insert into payments(round_id,user_id,amount) values($1,$2,$3) on conflict (round_id,user_id) do update set amount=excluded.amount, status='owed'",
         [round.id, r.user_id, r.amount]);
     }
-    await q("update plan_rounds set requests_sent=true where id=$1", [round.id]);
+    await q("update plan_rounds set requests_sent=true, requests_sent_at=now(), bill_total=$2 where id=$1", [round.id, split.total]);
   } else return fail("unknown action");
   return json({ ok: true });
 }

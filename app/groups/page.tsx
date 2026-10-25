@@ -6,6 +6,7 @@ import { Inter } from "next/font/google";
 import { Page } from "@/components/Page";
 import { Smiley } from "@/components/Smiley";
 import { useApi } from "@/lib/client";
+import { formatMoney } from "@/lib/format";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const avatarColors = ["bg-orchid text-orchidink", "bg-peach text-indigo", "bg-matcha text-matchaink", "bg-azure text-indigo"];
@@ -41,7 +42,8 @@ function GroupsContent() {
     setSearchOpen(false);
     updateQuery("");
   };
-  const { data, error } = useApi<any[]>("/api/groups");
+  const { data, error } = useApi<any[]>("/api/groups", 5000);
+  const { data: owed } = useApi<any[]>("/api/me/reminders", 15000, true);
   const term = query.trim().toLowerCase();
   const results = data?.map((group, index) => ({ group, index })).filter(({ group }) =>
     !term || [group.name, group.city, group.status].some((value) => typeof value === "string" && value.toLowerCase().includes(term))
@@ -92,6 +94,17 @@ function GroupsContent() {
 
         <div className="flex flex-col gap-4 px-6">
           {error && <p role="alert" className="rounded-[20px] border border-orchid bg-surface p-4 text-sm text-maroon">{error}</p>}
+          {!searching && !!owed?.length && <section aria-label="Payments you owe" className="flex flex-col gap-2">
+            {owed.map((o) => (
+              <Link key={o.id} href={`/groups/${o.group_id}/final`} className={`flex items-center gap-3 rounded-[20px] bg-orchid px-[18px] py-3.5 text-orchidink ${focus}`}>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-extrabold">{o.reminded_at ? `${o.payer_name} reminded you to pay` : `You owe ${o.payer_name}`}</span>
+                  <span className="block text-sm">{formatMoney(o.amount)} for {o.group_name}</span>
+                </span>
+                <span className="shrink-0 text-sm font-bold">Pay <span aria-hidden="true">→</span></span>
+              </Link>
+            ))}
+          </section>}
           {featured && (
             <article className={`relative flex flex-col rounded-3xl ${needsVote ? "bg-orchid/40" : "bg-pistachio"}`}>
               <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? "bg-orchid" : "bg-matcha"} px-[18px] py-4`}>

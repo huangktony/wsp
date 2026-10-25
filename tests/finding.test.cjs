@@ -109,7 +109,7 @@ test('server advisory lock gives simultaneous callers one generation owner and r
     } };
   } };
   const { startRound } = load('lib/pipeline.ts', {
-    './db': { pool }, './finding': finding, './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
   });
   const claims = await Promise.all([startRound(5), startRound(5)]);
   assert.equal(inserts, 1);
@@ -144,7 +144,7 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
   let fills = 0, created = true;
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
     '@/lib/finding': finding, '@/lib/db': {}, '@/lib/voting': {}, '@/lib/serpapi': {},
-    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, json: value => value },
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, setupDone: async () => true, json: value => value },
     '@/lib/pipeline': {
       startRound: async () => { const owner = created; created = false; return { roundId: 10, status: 'generating', created: owner }; },
       fillRound: async () => { fills++; },
@@ -166,6 +166,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() { throw Error('Must not navigate on failure'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, callbacks) => {
@@ -204,6 +205,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push: url => navigation.push(url), replace() { throw Error('No automatic navigation'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, handlers) => { callbacks = handlers; return Promise.resolve(); } },
@@ -255,6 +257,7 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
         useEffect: fn => effects.push(fn),
       },
       'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+      '@/lib/useSetupGate': { useSetupGate() {} },
       'next/navigation': { useRouter: () => ({ push() { throw Error('Unexpected navigation'); } }) },
       'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
       '@/lib/findingFlow': { runFinding: () => { realRuns++; return Promise.resolve(); } },
@@ -299,7 +302,7 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
     }
     return { rows: [] };
   } }) };
-  const { startRound } = load('lib/pipeline.ts', { './db': { pool }, './finding': finding, './tier': {}, './serpapi': { MissingCityError }, './price': {}, './gemini': {} });
+  const { startRound } = load('lib/pipeline.ts', { './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': { MissingCityError }, './price': {}, './gemini': {} });
   assert.equal((await startRound(5)).created, true);
   assert.equal(last.search_city, 'Houston, TX');
   assert.equal(last.search_distance_mi, 5);
@@ -317,7 +320,7 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
 test('generation uses the round snapshot for search and prompt, not later group edits', async () => {
   const calls = [];
   const { fillRound } = load('lib/pipeline.ts', {
-    './finding': finding,
+    './finding': finding, './split': load('lib/split.ts'),
     './db': {
       q1: async sql => { assert.ok(sql.includes("to_jsonb(r)->>'search_city' search_city")); assert.ok(sql.includes('g.city current_city')); return { group_id: 5, search_city: 'Dallas, TX', current_city: 'Seattle, WA', lat: 47.6062, lng: -122.3321, search_distance_mi: 5, sample_places: false }; },
       q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
@@ -378,7 +381,7 @@ test('pending migration keeps legacy voting rounds usable and rejects new rounds
     return { rows: [] };
   } }) };
   const { startRound, SearchSchemaPendingError } = load('lib/pipeline.ts', {
-    './db': { pool }, './finding': finding, './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
   });
   assert.equal((await startRound(5)).created, false);
   last = null;
@@ -406,7 +409,7 @@ test('legacy generation passes Austin coordinates and city to search and plan wr
   for (const snapshot of [{ search_city: null }, {}]) {
     let promptCity;
     const { fillRound } = load('lib/pipeline.ts', {
-      './finding': finding,
+      './finding': finding, './split': load('lib/split.ts'),
       './db': {
         q1: async () => ({ ...snapshot, group_id: 5, current_city: 'Houston, TX', lat: 29.7604, lng: -95.3698, search_distance_mi: 5 }),
         q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
@@ -427,4 +430,41 @@ test('legacy generation passes Austin coordinates and city to search and plan wr
     });
     assert.equal(promptCity, 'Austin, TX');
   }
+});
+
+test('merged setup gate protects normal finding but keeps the allowed loading preview local', async () => {
+  for (const [env, allowPreview, query, expectedCalls] of [
+    [{ NODE_ENV: 'development' }, true, '?preview=loading', 0],
+    [{ NODE_ENV: 'production' }, true, '?preview=loading', 1],
+    [{ NODE_ENV: 'production', NEXT_PUBLIC_ENABLE_PREVIEW: 'true' }, true, '?preview=loading', 0],
+    [{ NODE_ENV: 'development' }, false, '?preview=loading', 1],
+    [{ NODE_ENV: 'development' }, true, '', 1],
+  ]) {
+    const effects = [], redirects = [];
+    let calls = 0;
+    const { useSetupGate } = load('lib/useSetupGate.ts', {
+      react: { useEffect: fn => effects.push(fn) },
+      'next/navigation': { useRouter: () => ({ replace: path => redirects.push(path) }) },
+      './client': { api: async () => { calls++; return { availability: [] }; } },
+    }, { process: { env }, window: { location: { search: query } }, URLSearchParams, AbortController });
+    useSetupGate('5', allowPreview);
+    const cleanup = effects[0]();
+    await Promise.resolve();
+    assert.equal(calls, expectedCalls);
+    assert.equal(redirects.length, expectedCalls);
+    if (expectedCalls) assert.equal(redirects[0], '/groups/5/setup');
+    cleanup?.();
+  }
+});
+
+test('merged plans POST rejects unfinished setup before claiming or generating a round', async () => {
+  const { POST } = load('app/api/groups/[id]/plans/route.ts', {
+    '@/lib/finding': finding, '@/lib/db': {}, '@/lib/voting': {}, '@/lib/serpapi': {},
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, setupDone: async () => false,
+      fail: (error, status) => ({ error, status }) },
+    '@/lib/pipeline': { startRound: () => { throw Error('Must not start a round'); } },
+  });
+  const response = await POST({}, { params: Promise.resolve({ id: '5' }) });
+  assert.equal(response.status, 409);
+  assert.equal(response.error, 'finish your setup first');
 });

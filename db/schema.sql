@@ -117,3 +117,5 @@ alter table plan_rounds add column if not exists bill_total numeric;
 
 -- Snapshot members' search preferences at round creation (server-only; never returned to clients).
 alter table plan_rounds add column if not exists search_settings jsonb;
+-- Nessie's status for the transfer behind a payment ('completed', or 'pending' until Nessie executes it). Refreshed when the split screen loads.
+alter table payments add column if not exists transfer_status text;

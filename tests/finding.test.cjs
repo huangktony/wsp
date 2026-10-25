@@ -281,6 +281,7 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},
@@ -318,6 +319,7 @@ test('POST find-plans on a FINAL plan is refused with 409: only the group redraw
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},
@@ -860,6 +862,7 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},

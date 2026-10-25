@@ -182,7 +182,10 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
             <button type="button" disabled={busy} onClick={() => setConfirm(null)} className={quiet}>Cancel</button>
           </div>}
           {confirm === "leave" && <div role="alertdialog" aria-label="Confirm leave" className="flex flex-col gap-2.5 rounded-2xl border border-outline p-4">
-            {isOwner ? <>
+            {g?.myDues > 0 ? <>
+              <p role="alert" className="text-[15px] font-bold">You owe ${g.myDues.toFixed(2)} in this group. Pay your dues before leaving.</p>
+              <Link href={`/groups/${id}/final`} className={primary}>Pay now</Link>
+            </> : isOwner ? <>
               <p className="text-[15px] font-bold">Pick a new owner before you leave {g.name}.</p>
               <ul className="flex flex-col gap-2">
                 {others.map((member) => (

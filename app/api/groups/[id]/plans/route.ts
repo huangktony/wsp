@@ -14,6 +14,7 @@ import {
   withStopCosts,
 } from "@/lib/pipeline";
 import { redrawStatus } from "@/lib/redraw";
+import { refreshTransferStatuses } from "@/lib/payments";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -106,3 +107,36 @@ export async function GET(
     if (open) {
       delete p.approve;
       delete p.veto;
+    }
+  }
+
+  const members = await q<{ id: number; name: string }>(
+    "select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
+    [id],
+  );
+  const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
+
+  let split = null,
+    payments: any[] = [];
+  if (round.status === "final") {
+    split = await computeSplit(round.id);
+    await refreshTransferStatuses(round.id);
+    payments = await q<any>(
+      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.transfer_status from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id",
+      [round.id],
+    );
+  }
+  return json({
+    ...base,
+    round,
+    plans,
+    members,
+    memberCount,
+    voted,
+    roundOpen,
+    split,
+    payments,
+    isPayer: round.payer_id === uid,
+    redraw: await redrawStatus(id, uid),
+  });
+}

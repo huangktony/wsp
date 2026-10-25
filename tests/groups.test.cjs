@@ -28,6 +28,7 @@ function fixture(memberIds = [1, 2, 3]) {
       throw Error(`Unexpected query: ${sql}`);
     },
     q1: async (sql, a) => {
+      if (sql.startsWith('select coalesce(sum(p.amount)')) return { owed: 0 };
       if (sql.startsWith('select created_by from groups')) return s.groups.get(a[0]) ?? null;
       if (sql.startsWith('select 1 from memberships')) return s.members.has(a[1]) ? { one: 1 } : null;
       if (sql.startsWith('delete from groups')) {
@@ -52,6 +53,7 @@ function fixture(memberIds = [1, 2, 3]) {
   };
   const api = { requireUser: async () => user, json: (body, status = 200) => ({ body, status }), fail: (error, status = 400) => ({ body: { error }, status }) };
   const mocks = { '@/lib/db': db, '@/lib/api': api, zod: require('zod') };
+  mocks['@/lib/payments'] = load('lib/payments.ts', { ...mocks, '@/lib/nessie': {} });
   mocks['@/lib/groups'] = load('lib/groups.ts', mocks);
   mocks['@/lib/voting'] = { getVotingParticipation: async () => ({ votedMemberIds: [], voted: 0, memberCount: s.members.size, roundOpen: false }) };
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };

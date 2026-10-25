@@ -36,7 +36,7 @@ export default function NewGroup() {
   const join = () => { if (canJoin) void go(api("/api/groups/join", "POST", { code }), "join"); };
   return (
     <Page variant="plain">
-      <div className={`${inter.className} flex min-h-[calc(100svh-var(--tab-bar-height))] flex-col gap-[18px] bg-surface px-6 pb-[132px] pt-6 text-indigo`}>
+      <div className={`${inter.className} flex min-h-[calc(100svh-var(--tab-bar-height))] flex-col gap-[18px] px-6 pb-[132px] pt-6 text-indigo`}>
         <BackButton href="/groups" className="mb-2" />
         <h1 className="font-[inherit] text-[36px] font-extrabold leading-[1.05] tracking-[-1.4px]">Start a group</h1>
         <div className="flex flex-col gap-3">

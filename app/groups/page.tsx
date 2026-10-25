@@ -151,7 +151,7 @@ function GroupsContent() {
 
   return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface text-indigo`}>
+      <div className={`${inter.className} text-indigo`}>
         <p className="px-6 pt-6 text-xs font-extrabold tracking-[0.18em] text-secondary">
           WSP HANGOUT
         </p>
@@ -257,7 +257,7 @@ function GroupsContent() {
           <>
             <h2 className="mb-1 flex items-center gap-2 px-6 font-[inherit] text-sm font-bold text-[#35607A]">
               Needs Action
-              <span className="rounded-full bg-[#CBE6C7] px-2 py-0.5 text-xs font-extrabold text-[#28536B]">
+              <span className="rounded-full bg-pistachio px-2 py-0.5 text-xs font-extrabold text-indigo">
                 {open.length}
               </span>
             </h2>

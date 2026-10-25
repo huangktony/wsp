@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import { Inter } from "next/font/google";
 import { Page } from "@/components/Page";
@@ -16,11 +15,8 @@ const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 
 function Header() {
   return (
-    <header className="flex items-center gap-3 pb-5">
-      <Link href="/groups" aria-label="Back to groups" className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pistachio ${focus}`}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-      </Link>
-      <h1 className="min-w-0 flex-1 font-[inherit] text-[28px] font-extrabold leading-tight tracking-[-1px]">Your money</h1>
+    <header className="mb-5 flex items-center justify-between">
+      <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Your money</h1>
       <span className="rounded-full bg-orchid px-3 py-1 text-xs font-extrabold tracking-wide text-orchidink">DEMO</span>
     </header>
   );
@@ -28,7 +24,7 @@ function Header() {
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <Page variant="plain">
-    <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>{children}</div>
+    <div className={`${inter.className} px-6 pt-6 text-indigo`}>{children}</div>
   </Page>
 );
 

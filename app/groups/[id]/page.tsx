@@ -137,7 +137,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   }
 
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
+    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col gap-[18px] px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
         <BackButton href="/groups" className="mb-3" />
         {g && <>

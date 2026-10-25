@@ -19,7 +19,7 @@ export default function Settings() {
   const choose = (t: Theme) => { setTheme(t); setThemePref(t); };
   return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
+      <div className={`${inter.className} px-6 pt-6 text-indigo`}>
       <BackButton href="/profile" className="mb-3" />
       <h1 className="mb-4 font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Settings</h1>
       <section>

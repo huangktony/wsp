@@ -102,6 +102,18 @@ function enrichStops(stops: { place: string; time: string }[], planCost: number,
   return out;
 }
 
+/**
+ * Plans made before stops had a per-stop cost (older rounds) only store { place, time }.
+ * Fill in the missing costs by sharing the plan's total across its stops, so the split never gets NaN.
+ */
+export function withStopCosts(stops: any[], planCost: number): Stop[] {
+  const list = Array.isArray(stops) ? stops : [];
+  const known = list.reduce((a, s) => a + (Number.isFinite(Number(s.cost)) ? Number(s.cost) : 0), 0);
+  const missing = list.filter((s) => !Number.isFinite(Number(s.cost))).length;
+  const each = missing ? Math.max(0, (Number(planCost) || 0) - known) / missing : 0;
+  return list.map((s) => ({ ...s, cost: Number.isFinite(Number(s.cost)) ? Number(s.cost) : Math.round(each * 100) / 100 }));
+}
+
 /** Back-compat for the seed script: claim and fill a round in one go. */
 export async function runFindPlans(groupId: number): Promise<number> {
   const r = await startRound(groupId);
@@ -149,9 +161,9 @@ export async function settleRound(roundId: number, force = false): Promise<strin
  * Amounts are in cents so they always add up to the total.
  */
 export async function computeSplit(roundId: number) {
-  const r = await q1<any>("select r.group_id,r.split_mode,r.payer_id,p.stops from plan_rounds r join plans p on p.id=r.winner_plan_id where r.id=$1", [roundId]);
+    const r = await q1<any>("select r.group_id,r.split_mode,r.payer_id,p.stops,p.est_cost_per_person::float plan_cost from plan_rounds r join plans p on p.id=r.winner_plan_id where r.id=$1", [roundId]);
   if (!r) return null;
-  const stops = r.stops as Stop[];
+    const stops = withStopCosts(r.stops, r.plan_cost);
   const members = await q<{ id: number; name: string }>("select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [r.group_id]);
   const skips = await q<{ user_id: number; stop_index: number }>("select user_id,stop_index from stop_skips where round_id=$1", [roundId]);
   const skipped = (uid: number) => skips.filter((s) => s.user_id === uid).map((s) => s.stop_index);

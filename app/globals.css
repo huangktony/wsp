@@ -68,6 +68,7 @@
   --azure: #2b444d;
   --indigo: #b9d6e4;
   --orchid: #6a2c44;
+  --peach: #6b4a2e; /* pastel tokens turn dark here; peach is always used with light text */
   --secondary: #a3bcc8;
   --maroon: #f29bbb;
   --orchid-ink: #fbd0de;

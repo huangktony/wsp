@@ -57,6 +57,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
+  mocks['@/lib/redraw'] = { redrawStatus: async () => null };
   mocks['@/lib/groups'] = { deleteGroup: async () => ({ ok: true }) };
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
   const post = load('app/api/plans/[id]/vote/route.ts', mocks).POST;
@@ -151,6 +152,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
+    '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
     '@/lib/client': {
       useApi: () => ({ data: current, error: '', reload: async () => { current = structuredClone(server); return current; } }),
       api: (url, method, body) => new Promise((resolve, reject) => {
@@ -214,6 +216,8 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     'next/link': { default: 'a' },
     '@/components/Avatar': { Avatar: 'avatar' },
     '@/components/BackButton': { BackButton: 'a' },
+    '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
+    '@/components/RedrawVote': { RedrawVote: 'redraw' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     '@/lib/finding': load('lib/finding.ts', {}),
     'next/font/google': { Inter: () => ({ className: '' }) },
@@ -245,12 +249,15 @@ test('home shares partial-ballot progress and falls back to setup without an ope
   tree = render();
   assert.ok(text(tree).includes('2 of 2 ready · voting'));
   assert.ok(text(tree).includes('Everyone has voted.'));
-  for (const status of ['final', null]) {
+  // The progress card names the phase it is counting; the ready count itself does not change.
+  const phase = { final: 'final plan picked', generating: 'finding plans', null: 'setup' };
+  for (const status of ['final', 'generating', null]) {
     f.setRound(status);
     data = await f.home();
     assert.equal(data.roundOpen, false);
     tree = render();
-    assert.ok(text(tree).includes('0 of 2 ready · setup'));
+    assert.ok(text(tree).includes(`0 of 2 ready · ${phase[status]}`), `${status}: ${text(tree).slice(0, 200)}`);
+    assert.ok(!(status === 'final' && text(tree).includes('· setup')), 'a final plan must not say setup');
     assert.ok(text(tree).includes('Setting up'));
     assert.equal(nodes(tree).find(n => n.props?.role === 'progressbar').props['aria-valuenow'], 0);
   }

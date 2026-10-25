@@ -7,6 +7,8 @@ import { Avatar } from "@/components/Avatar";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
+import { RedrawVote } from "@/components/RedrawVote";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -15,14 +17,21 @@ const avatarColors = ["bg-matcha text-matchaink", "bg-orchid text-orchidink", "b
 const primary = `flex min-h-[54px] w-full items-center justify-center rounded-[14px] bg-matcha px-4 py-3 text-[17px] font-bold text-matchaink ${focus}`;
 
 const pill = `flex min-h-[48px] w-full items-center justify-center rounded-full px-4 py-3 text-base font-bold disabled:opacity-60 ${focus}`;
+// text-surface is white in light mode and the dark surface in dark mode, where maroon turns into a light pink.
 const danger = `${pill} bg-maroon text-surface`;
 const quiet = `${pill} border border-outline bg-transparent text-indigo`;
 
-type Member = { id: number; name: string; avatar?: string | null; setup_done: boolean; has_voted: boolean };
+type Member = {
+  id: number;
+  name: string;
+  avatar?: string | null;
+  setup_done: boolean;
+  has_voted: boolean;
+};
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: g, error } = useApi<any>(`/api/groups/${id}`, 4000, true);
+  const { data: g, error, reload } = useApi<any>(`/api/groups/${id}`, 4000, true);
   useFindingRedirect(id, g);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
@@ -32,11 +41,15 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     setCopied(false);
     setCopyError("");
-    return () => { if (copyTimer.current) clearTimeout(copyTimer.current); };
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
   }, [g?.invite_code, id]);
+
   const copyCode = async () => {
     if (!g?.invite_code) return;
     try {
@@ -49,11 +62,18 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       setCopyError("Could not copy. Select and copy the code instead.");
     }
   };
+
   const run = (call: () => Promise<unknown>) => {
     setBusy(true);
     setActionError("");
-    call().then(() => router.push("/groups")).catch((e) => { setActionError(e.message); setBusy(false); });
+    call()
+      .then(() => router.push("/groups"))
+      .catch((e) => {
+        setActionError(e.message);
+        setBusy(false);
+      });
   };
+
   const members: Member[] = g?.members ?? [];
   const others = members.filter((member) => member.id !== g?.me);
   const isOwner = g?.isCreator === true;
@@ -61,11 +81,14 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const needsNewSearch = g?.finding?.needsNewSearch === true || g?.finding?.cityChanged === true;
   const action = groupHomeAction(g?.finding?.round, g?.finding?.planCount ?? 0);
   const open = g?.roundOpen === true;
+  const final = g?.round?.status === "final";
+  const phase = final ? "final plan picked" : open ? "voting" : g?.round?.status === "generating" ? "finding plans" : "setup";
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
   const ready = open ? g.voted : members.length - pending.length;
   const progress = total ? Math.round(ready / total * 100) : 0;
   const memberName = (member: Member) => member.id === g.me ? "You" : member.name;
+
   let helper = "Everyone is ready.";
   if (pending.length === 1) {
     helper = `${memberName(pending[0])} ${pending[0].id === g.me ? "have" : "has"} not finished yet. You can find plans now and re-run them when ${pending[0].id === g.me ? "you are" : "they are"} done.`;
@@ -76,6 +99,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   } else if (!members.length) {
     helper = "No members yet.";
   }
+
   if (open) {
     const missing = pending.length === 1
       ? `${memberName(pending[0])} ${pending[0].id === g.me ? "have" : "has"}`
@@ -86,6 +110,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       ? `${missing} not voted yet. Voting closes at the deadline or once everyone has voted on every plan.`
       : "Everyone has voted.";
   }
+
   return (
     <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
@@ -94,11 +119,21 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <h1 className="break-words font-[inherit] text-[28px] font-extrabold leading-tight tracking-[-0.5px]">{g.name}</h1>
           <p className="text-[15px] text-secondary">{[g.city, g.groupTier ? `group cap ${g.groupTier}` : null].filter(Boolean).join(" · ")}</p>
         </>}
+        {!g && !error && <><SkeletonBlock className="h-[35px] w-2/3" /><SkeletonBlock className="mt-1 h-[23px] w-1/3" /></>}
       </header>
-      {!g ? <p role={error ? "alert" : "status"} className={`text-sm ${error ? "text-maroon" : "text-secondary"}`}>{error || "Loading…"}</p> : <>
+      {!g ? (error ? <p role="alert" className="text-sm text-maroon">{error}</p> : (
+        <Skeleton className="flex flex-1 flex-col gap-[18px]">
+          <SkeletonBlock className="h-[79px]" />
+          <SkeletonBlock className="h-[94px] !rounded-[20px]" />
+          <div><SkeletonBlock className="mb-1.5 h-5 w-20" /><div className="space-y-1.5">{[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} className="h-[60px]" />)}</div></div>
+          <div className="mt-auto flex flex-col gap-2.5">
+            <SkeletonBlock className="h-[18px]" /><SkeletonBlock className="h-[54px]" /><SkeletonBlock className="h-[76px] !rounded-full" /><SkeletonBlock className="h-[50px] !rounded-full" /><SkeletonBlock className="h-12 !rounded-full" />
+          </div>
+        </Skeleton>
+      )) : <>
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {open ? "voting" : "setup"}</span></span>
+            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {phase}</span></span>
           </div>
           <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-surface">
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
@@ -132,11 +167,12 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
-          {g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
-          {action.final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          <Link href={`/groups/${id}/${action.destination}${action.fresh ? "?new=1" : ""}`} className={primary}>{action.label}</Link>
-          {needsNewSearch && action.destination === "plans" && <Link href={`/groups/${id}/finding`} className={primary}>Find plans</Link>}
-          <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
+          {!final && g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
+          {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
+          {!final && <Link href={`/groups/${id}/${action.destination}${action.fresh ? "?new=1" : ""}`} className={primary}>{action.label}</Link>}
+          {!final && needsNewSearch && action.destination === "plans" && <Link href={`/groups/${id}/finding`} className={primary}>Find plans</Link>}
+          {final && <RedrawVote id={id} redraw={g.redraw} onChanged={reload} />}
+          {!final && <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>}
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>
             <button type="button" disabled={busy} onClick={() => run(() => api(`/api/groups/${id}`, "DELETE"))} className={danger}>Delete group</button>

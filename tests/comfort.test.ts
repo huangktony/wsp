@@ -75,7 +75,7 @@ test("PUT body: the existing rules still hold", () => {
 test("caption: using the suggestion explains it, with the average in bold", () => {
   const c = comfortCaption({ suggested: "$$", picked: null, avg: 18 });
   assert.equal(c.kind, "same");
-  assert.equal(c.text, "You usually spend about $18 per outing, so WSP looks for places at $$ or below.");
+  assert.equal(c.text, "You usually spend about $18 per outing, so WSP looks for places up to $30 / person.");
   assert.equal(c.bold, "$18 per outing");
   assert.equal(c.showReset, false);
   assert.ok(c.text.includes(c.bold!));
@@ -88,14 +88,14 @@ test("caption: picking the same level as the suggestion reads like using it", ()
 test("caption: a lower pick says so and offers 'Use suggested'", () => {
   const c = comfortCaption({ suggested: "$$", picked: "$", avg: 18 });
   assert.equal(c.kind, "lower");
-  assert.equal(c.text, "Suggested $$ from your spending. You picked $ for this group.");
+  assert.equal(c.text, "Your spending suggests up to $30 / person. You picked up to $12 / person for this group.");
   assert.equal(c.showReset, true);
 });
 
 test("caption: a higher pick adds the 'above what you usually spend' note", () => {
   const c = comfortCaption({ suggested: "$", picked: "$$$", avg: 8.13 });
   assert.equal(c.kind, "higher");
-  assert.equal(c.text, "Suggested $ from your spending. You picked $$$ for this group. That's above what you usually spend.");
+  assert.equal(c.text, "Your spending suggests up to $12 / person. You picked $30+ / person for this group. That's above what you usually spend.");
   assert.equal(c.showReset, true);
 });
 

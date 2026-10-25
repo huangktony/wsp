@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { SLOTS } from "./constants";
 import { rank } from "./price";
-import { isTier, lowestTier, type Tier } from "./tiers";
+import { isTier, lowestTier, tierLabel, type Tier } from "./tiers";
 
 /** A member's level for a group: their own pick if they made one, else the suggestion from their spending. null if neither. */
 export function effectiveTier(override: string | null | undefined, suggested: string | null | undefined): Tier | null {
@@ -35,14 +35,14 @@ export function comfortCaption(p: { suggested: Tier | null; picked: Tier | null;
     // "about" plus cents reads oddly, so the caption rounds to whole dollars (Budget keeps the cents).
     const bold = avg == null ? undefined : `$${Math.round(avg)} per outing`;
     const text = bold
-      ? `You usually spend about ${bold}, so WSP looks for places at ${suggested} or below.`
-      : `WSP looks for places at ${suggested} or below.`;
+      ? `You usually spend about ${bold}, so WSP looks for places ${tierLabel(suggested)}.`
+      : `WSP looks for places ${tierLabel(suggested)}.`;
     return { kind: "same", text, bold, showReset: false };
   }
   const above = rank(picked) > rank(suggested);
   return {
     kind: above ? "higher" : "lower",
-    text: `Suggested ${suggested} from your spending. You picked ${picked} for this group.${above ? " That's above what you usually spend." : ""}`,
+    text: `Your spending suggests ${tierLabel(suggested)}. You picked ${tierLabel(picked)} for this group.${above ? " That's above what you usually spend." : ""}`,
     showReset: true,
   };
 }

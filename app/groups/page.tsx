@@ -16,16 +16,6 @@ import {
 } from "@/lib/groupStories";
 import { formatMoney } from "@/lib/format";
 
-const setupCardColors = {
-  face: "#FFFFFF",
-  features: "#28536B",
-  pill: "#F3A5BC",
-  pillText: "#7A1A3F",
-  button: "#8FB78F",
-  buttonText: "#1B3A1E",
-  buttonBorder: "rgb(27 58 30 / 20%)",
-} as const;
-
 const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "600", "700", "800"],
@@ -66,17 +56,16 @@ const meta = (group: any) =>
 function renderGroupCard(group: any) {
   const setup = group.status === "SET UP";
   return (
-    <article key={group.id} className={`relative flex flex-col rounded-3xl ${setup ? "border border-[#B4CCCF] bg-[#FFEBDD] text-[#28536B]" : "bg-pistachio"}`}>
-      <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${setup ? "bg-[#FFC49B]" : "bg-matcha"} px-[18px] py-4`}>
+    <article key={group.id} className={`relative flex flex-col rounded-3xl ${setup ? "border border-azure bg-setupbody text-ink" : group.status === "VOTING OPEN" ? "bg-votebody" : "bg-pistachio"}`}>
+      <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${setup ? "bg-setuphead" : group.status === "VOTING OPEN" ? "bg-votehead" : "bg-matcha"} px-[18px] py-4`}>
         {group.status && (
           <span
-            className={`rounded-xl ${setup ? "" : "bg-panel text-white"} px-2.5 py-[5px] text-xs font-extrabold`}
-            style={setup ? { backgroundColor: setupCardColors.pill, color: setupCardColors.pillText } : undefined}
+            className={`rounded-xl ${setup ? "bg-setuppill text-setuppillink" : "bg-panel text-white"} px-2.5 py-[5px] text-xs font-extrabold`}
           >
             {group.status}
           </span>
         )}
-        <Smiley size={48} faceColor={setup ? setupCardColors.face : undefined} featureColor={setup ? setupCardColors.features : undefined} />
+        <Smiley size={48} faceColor={setup ? "var(--setup-face)" : undefined} featureColor={setup ? "var(--logo-ink)" : undefined} />
       </div>
       <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
         <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
@@ -87,12 +76,11 @@ function renderGroupCard(group: any) {
             {group.name}
           </Link>
         </h2>
-        <p className={`text-sm ${setup ? "text-[#35607A]" : "text-secondary"}`}>{meta(group)}</p>
+        <p className={`text-sm text-secondary`}>{meta(group)}</p>
         <div className="mt-1.5 flex items-center justify-end">
           <Link
             href={groupHref(group)}
-            className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full ${setup ? "border" : "bg-panel text-white"} px-[18px] py-2 text-sm font-bold shadow-md hover:brightness-90 active:brightness-75 ${focus}`}
-            style={setup ? { backgroundColor: setupCardColors.button, color: setupCardColors.buttonText, borderColor: setupCardColors.buttonBorder } : undefined}
+            className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full ${setup ? "border border-setupbtnborder bg-setupbtn text-setupbtnink" : "bg-panel text-white"} px-[18px] py-2 text-sm font-bold shadow-md hover:brightness-90 active:brightness-75 ${focus}`}
           >
             View group <span aria-hidden="true">→</span>
           </Link>
@@ -282,7 +270,7 @@ function GroupsContent() {
                     {needsVoteBadge(group) && (
                       <span
                         aria-hidden="true"
-                        className="absolute -right-0.5 -top-0.5 h-[14px] w-[14px] rounded-full border-2 border-white bg-[#F3A5BC]"
+                        className="absolute -right-0.5 -top-0.5 h-[14px] w-[14px] rounded-full border-2 border-surface bg-pink"
                       />
                     )}
                   </span>
@@ -345,14 +333,10 @@ function GroupsContent() {
                 return (
                   <article
                     key={group.id}
-                    className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl ${
-                      needsVote ? "bg-orchid/40" : "bg-pistachio"
-                    }`}
+                    className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl bg-votebody`}
                   >
                     <div
-                      className={`flex h-[84px] items-start justify-between rounded-t-3xl ${
-                        needsVote ? "bg-orchid" : "bg-matcha"
-                      } px-[18px] py-4`}
+                      className={`flex h-[84px] items-start justify-between rounded-t-3xl bg-votehead px-[18px] py-4`}
                     >
                       {group.status && (
                         <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">
@@ -361,7 +345,7 @@ function GroupsContent() {
                       )}
                       <Smiley
                         size={48}
-                        fill={needsVote ? "fill-pistachio" : undefined}
+                        fill="fill-voteface"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">

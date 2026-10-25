@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
 import { useApi } from "@/lib/client";
@@ -53,7 +54,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   return (
     <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-white px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
-        <Link href="/groups" className={`flex min-h-11 w-fit items-center rounded py-1 text-[15px] text-secondary ${focus}`}>Back to groups</Link>
+        <BackButton href="/groups" className="mb-3" />
         {g && <>
           <h1 className="break-words font-[inherit] text-[28px] font-extrabold leading-tight tracking-[-0.5px]">{g.name}</h1>
           <p className="text-[15px] text-secondary">{[g.city, g.groupTier ? `group cap ${g.groupTier}` : null].filter(Boolean).join(" · ")}</p>

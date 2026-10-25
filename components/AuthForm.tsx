@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { BackButton } from "./BackButton";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
@@ -66,9 +67,7 @@ export function SignupForm() {
   };
   return (
     <form onSubmit={submit} className="flex min-h-screen flex-col gap-[18px] px-6 pt-14">
-      <Link href="/login" aria-label="Back" className="flex h-11 w-11 items-center justify-center rounded-full bg-mint">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-      </Link>
+      <BackButton href="/login" className="mb-2" />
       <h1 className="text-4xl font-extrabold leading-[1.05] tracking-tight">Let&apos;s get you in.</h1>
       <p className="text-base text-muted">Three quick things and you&apos;re planning.</p>
       <div className="flex flex-col gap-3">

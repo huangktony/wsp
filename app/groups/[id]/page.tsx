@@ -63,7 +63,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       : "Everyone has voted.";
   }
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-white px-6 pb-7 pt-6 text-indigo`}>
+    <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
         <BackButton href="/groups" className="mb-3" />
         {g && <>
@@ -76,17 +76,17 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {open ? "voting" : "setup"}</span></span>
           </div>
-          <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-white">
+          <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-surface">
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
           </div>
         </section>
         {g.invite_code && <div>
-          <section aria-label="Invite code" className="flex items-center justify-between gap-2 rounded-[20px] bg-indigo px-5 py-[18px] text-white">
+          <section aria-label="Invite code" className="flex items-center justify-between gap-2 rounded-[20px] bg-panel px-5 py-[18px] text-white">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="text-xs font-bold text-pistachio">INVITE CODE</span>
+              <span className="text-xs font-bold text-panelsoft">INVITE CODE</span>
               <span className="break-all text-[30px] font-extrabold leading-tight tracking-[3px] tabular-nums">{g.invite_code}</span>
             </div>
-            <button type="button" onClick={copyCode} className="h-10 shrink-0 rounded-[20px] bg-peach px-[18px] text-sm font-extrabold text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pistachio"><span aria-live="polite">{copied ? "Copied" : "Copy"}</span></button>
+            <button type="button" onClick={copyCode} className="h-10 shrink-0 rounded-[20px] bg-peach px-[18px] text-sm font-extrabold text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-panelsoft"><span aria-live="polite">{copied ? "Copied" : "Copy"}</span></button>
           </section>
           {copyError && <p role="status" className="mt-2 text-sm text-maroon">{copyError}</p>}
         </div>}

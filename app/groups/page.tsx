@@ -50,12 +50,12 @@ function GroupsContent() {
 
   return (
     <Page variant="plain" tabs>
-      <div className={`${inter.className} bg-white text-indigo`}>
+      <div className={`${inter.className} bg-surface text-indigo`}>
         <header className="flex items-center justify-between px-6 pb-3 pt-6">
           {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }}>
             <div className="relative min-w-0 flex-1">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-4 top-3"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l5 5" /></svg>
-              <input ref={inputRef} type="search" aria-label="Search your groups" placeholder="Search your groups" value={query} onChange={(event) => { setSearchOpen(true); updateQuery(event.target.value); }} className="h-11 w-full rounded-[22px] border-2 border-outline bg-white pl-11 pr-4 text-base text-indigo placeholder:text-secondary focus:border-indigo focus:outline-none focus:ring-2 focus:ring-indigo focus:ring-offset-2" />
+              <input ref={inputRef} type="search" aria-label="Search your groups" placeholder="Search your groups" value={query} onChange={(event) => { setSearchOpen(true); updateQuery(event.target.value); }} className="h-11 w-full rounded-[22px] border-2 border-outline bg-surface pl-11 pr-4 text-base text-indigo placeholder:text-secondary focus:border-indigo focus:outline-none focus:ring-2 focus:ring-indigo focus:ring-offset-2 focus:ring-offset-surface" />
             </div>
             <button type="button" aria-label="Close search" onClick={closeSearch} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pistachio ${focus}`}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -89,11 +89,11 @@ function GroupsContent() {
         </nav>
 
         <div className="flex flex-col gap-4 px-6">
-          {error && <p role="alert" className="rounded-[20px] border border-orchid bg-white p-4 text-sm text-maroon">{error}</p>}
+          {error && <p role="alert" className="rounded-[20px] border border-orchid bg-surface p-4 text-sm text-maroon">{error}</p>}
           {featured && (
             <article className="relative flex flex-col rounded-3xl bg-pistachio">
               <div className="flex h-[84px] items-start justify-between rounded-t-3xl bg-matcha px-[18px] py-4">
-                {featured.status && <span className="rounded-xl bg-indigo px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
+                {featured.status && <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
                 <Smiley size={48} />
               </div>
               <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
@@ -102,13 +102,13 @@ function GroupsContent() {
                 </h2>
                 <p className="text-sm text-secondary">{meta(featured)}</p>
                 <div className="mt-1.5 flex items-center justify-end">
-                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-indigo px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>Vote now <span aria-hidden="true">→</span></Link>
+                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>Vote now <span aria-hidden="true">→</span></Link>
                 </div>
               </div>
             </article>
           )}
           {results?.map(({ group, index }) => group.id !== featured?.id && (
-            <Link key={group.id} href={`/groups/${group.id}`} className={`flex items-center gap-3.5 rounded-[20px] border border-azure bg-white px-[18px] py-4 ${focus}`}>
+            <Link key={group.id} href={`/groups/${group.id}`} className={`flex items-center gap-3.5 rounded-[20px] border border-azure bg-surface px-[18px] py-4 ${focus}`}>
               <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{initials(group.name)}</span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <h2 className="break-words font-[inherit] text-[17px] font-extrabold leading-tight">{group.name}</h2>

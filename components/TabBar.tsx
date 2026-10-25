@@ -11,7 +11,7 @@ const TABS = [
 export function TabBar() {
   const path = usePathname();
   return (
-    <nav aria-label="Main navigation" className="fixed bottom-0 left-1/2 z-20 flex h-[92px] w-full max-w-[390px] -translate-x-1/2 items-start justify-around border-t border-azure bg-white px-7 pt-3">
+    <nav aria-label="Main navigation" className="fixed bottom-0 left-1/2 z-20 flex h-[92px] w-full max-w-[390px] -translate-x-1/2 items-start justify-around border-t border-azure bg-surface px-7 pt-3">
       {TABS.map((t) => {
         const active = path === t.href;
         return (

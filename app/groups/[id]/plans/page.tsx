@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -16,6 +17,19 @@ function left(ms: number) {
   if (ms <= 0) return "Voting is closing…";
   const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
   return h ? `Voting ends in ${h}h ${m % 60}m` : m ? `Voting ends in ${m}m` : "Voting ends in under a minute";
+}
+
+function PlansSkeleton() {
+  return (
+    <Skeleton>
+      <SkeletonBlock className="mb-1 h-[23px] w-1/3" />
+      <SkeletonBlock className="mb-3 h-[31px] w-3/4" />
+      <div className="mb-5 flex flex-wrap gap-2"><SkeletonBlock className="h-7 w-32 !rounded-full" /><SkeletonBlock className="h-7 w-40 !rounded-full" /><SkeletonBlock className="h-7 w-36 !rounded-full" /></div>
+      <div className="space-y-4"><SkeletonBlock className="h-[297px]" /><SkeletonBlock className="h-[248px]" /><SkeletonBlock className="h-[346px]" /></div>
+      <SkeletonBlock className="mt-5 h-[59px]" />
+      <SkeletonBlock className="mt-4 h-14" />
+    </Skeleton>
+  );
 }
 
 export default function Plans({ params }: { params: Promise<{ id: string }> }) {
@@ -57,8 +71,8 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
     if (status === "vetoed" || status === "generating") r.replace(`/groups/${id}/finding`);
   }, [status, id, r]);
 
-  if (!data) return <div className={inter.className}><Page back={`/groups/${id}`}>{error || "Loading…"}</Page></div>;
-  if (!data.round || status !== "voting") return <div className={inter.className}><Page back={`/groups/${id}`}>{data.round ? "Loading…" : "No plans yet."}</Page></div>;
+  if (!data) return <div className={inter.className}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : <PlansSkeleton />}</Page></div>;
+  if (!data.round || status !== "voting") return <div className={inter.className}><Page back={`/groups/${id}`}>{data.round ? <PlansSkeleton /> : "No plans yet."}</Page></div>;
 
   const voteOf = (p: any): Vote => (p.id in mine ? mine[p.id] : p.my_vote ?? null);
   const vote = (p: any, v: Exclude<Vote, null>) => {

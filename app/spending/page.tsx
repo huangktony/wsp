@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { Page } from "@/components/Page";
 import { BalanceDebtChart } from "@/components/BalanceDebtChart";
 import { LinkBank } from "@/components/LinkBank";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { TierGauge } from "@/components/TierGauge";
 import { categoryStyle } from "@/components/categoryStyle";
 import { useApi } from "@/lib/client";
@@ -44,7 +45,19 @@ export default function Spending() {
       </Shell>
     );
   }
-  if (!data) return <Shell><Header /><p className="text-secondary">Loading…</p></Shell>;
+  if (!data) return (
+    <Shell>
+      <Header />
+      <Skeleton>
+        <SkeletonBlock className="h-[285px] !rounded-3xl" />
+        <div className="mt-3 grid grid-cols-2 gap-3"><SkeletonBlock className="h-[95px] !rounded-3xl" /><SkeletonBlock className="h-[95px] !rounded-3xl" /></div>
+        <div className="mt-7"><SkeletonBlock className="h-7 w-2/3" /><SkeletonBlock className="mt-3 h-3.5 !rounded-full" /><SkeletonBlock className="mt-4 h-20" /></div>
+        <div className="mt-7"><SkeletonBlock className="h-7 w-24" /><div className="mt-1 space-y-2">{Array.from({ length: 10 }, (_, i) => <SkeletonBlock key={i} className="h-[62px]" />)}</div></div>
+        <SkeletonBlock className="mt-7 h-[84px] !rounded-3xl" />
+        <SkeletonBlock className="mt-6 h-[88px]" />
+      </Skeleton>
+    </Shell>
+  );
   if (!data.linked) {
     return (
       <Shell>

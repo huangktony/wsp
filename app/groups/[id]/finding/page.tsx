@@ -39,7 +39,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
     setPhase("checking"); setStep(0); setError("");
     const timeout = setTimeout(() => controller.abort(new Error("Finding plans took too long. Try again.")), 30000);
     const clear = () => { clearTimeout(timeout); if (ticker) clearInterval(ticker); };
-    void runFinding(id, query.get("new") === "1", controller.signal, {
+    void runFinding(id, controller.signal, {
       update: setGroup,
       started: () => {
         setPhase("running");

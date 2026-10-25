@@ -2,6 +2,8 @@
 import { mockPurchases } from "./mocks/data";
 import type { MerchantInfo, NessiePurchase } from "./analyze";
 import { planPurchases, startingBalance, type Spender } from "./profiles";
+import { HANGOUT_CATEGORY, HANGOUT_MERCHANT, hangoutDescription, hasHangout } from "./hangout";
+import { pendingHalves, splitDescription, type LedgerEntry } from "./ledger";
 
 const BASE = "https://api.nessieisreal.com";
 const useMock = () => process.env.USE_MOCKS === "true" || !process.env.NESSIE_API_KEY;
@@ -86,6 +88,47 @@ export async function seedAccount(accountId: string, userId: number, profile: Sp
   return rows.length;
 }
 
+/** Finds a merchant by name (first match wins, duplicates tolerated) or creates it. */
+async function ensureMerchant(name: string, category: string): Promise<string> {
+  const existing: any[] = await nj("/merchants");
+  const hit = existing.find((m) => m.name === name);
+  if (hit) return hit._id;
+  const c = await nj("/merchants", {
+    method: "POST",
+    body: JSON.stringify({ name, category, address: { street_number: "1", street_name: "Congress Ave", city: "Austin", state: "TX", zip: "78701" }, geocode: { lat: 30.2672, lng: -97.7431 } }),
+  });
+  const id = c.objectCreated?._id as string;
+  if (!id) throw new Error(`nessie did not return an id for merchant ${name}`);
+  return id;
+}
+
+/**
+ * Records what the payer paid up front: ONE purchase for the whole bill at the "WSP Hangout" merchant, once per round.
+ * Live mode throws on failure so the caller can refuse and retry. Mock mode and mock- accounts do nothing.
+ * Nessie stores whole dollars, and the bill is a sum of whole-dollar stop costs, so nothing is truncated.
+ */
+export async function recordHangout(accountId: string | null, roundId: number, title: string, total: number): Promise<boolean> {
+  if (!live() || !accountId || accountId.startsWith("mock-") || total <= 0) return false;
+  const existing: any[] = await nj(`/accounts/${accountId}/purchases`);
+  if (hasHangout(existing, roundId)) return false;
+  const merchant_id = await ensureMerchant(HANGOUT_MERCHANT, HANGOUT_CATEGORY);
+  await nj(`/accounts/${accountId}/purchases`, {
+    method: "POST",
+    body: JSON.stringify({ merchant_id, medium: "balance", purchase_date: new Date().toISOString().slice(0, 10), amount: Math.round(total), status: "completed", description: hangoutDescription(title, roundId) }),
+  });
+  return true;
+}
+
+/** Nessie answers 404 "No ... found for this account" for an empty transfers/deposits/withdrawals list. That means zero, not an error. */
+async function njList(path: string): Promise<any[]> {
+  try {
+    return await nj(path);
+  } catch (e: any) {
+    if (/ 404:/.test(String(e?.message))) return [];
+    throw e;
+  }
+}
+
 /** Creates a Nessie customer + checking account and seeds its purchase history, or returns a mock id pair. */
 export async function linkAccount(name: string, userId: number, profile: Spender): Promise<{ customerId: string; accountId: string }> {
   if (live()) {
@@ -112,7 +155,7 @@ export async function linkAccount(name: string, userId: number, profile: Spender
 const merchantCache = new Map<string, MerchantInfo>();
 
 /** `balance` is the account's STARTING balance: Nessie does not deduct purchases from it. */
-export type SpendingData = { purchases: NessiePurchase[]; merchants: Map<string, MerchantInfo>; balance: number | null };
+export type SpendingData = { purchases: NessiePurchase[]; merchants: Map<string, MerchantInfo>; balance: number | null; ledger: LedgerEntry[] };
 
 const MOCK_BALANCE = 2000;
 
@@ -126,7 +169,13 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
     // Nessie answers 200 [] for purchases of an unknown account or wrong key, but 404 for the account itself,
     // so check the account first. Otherwise a wrong account would look like someone who spent nothing.
     const account = await nj(`/accounts/${accountId}`);
-    const rows: any[] = await nj(`/accounts/${accountId}/purchases`);
+    const [rows, withdrawals, deposits] = await Promise.all([
+      nj(`/accounts/${accountId}/purchases`) as Promise<any[]>,
+      njList(`/accounts/${accountId}/withdrawals`),
+      njList(`/accounts/${accountId}/deposits`),
+    ]);
+    const entry = (kind: "in" | "out") => (r: any): LedgerEntry => ({ kind, date: r.transaction_date, amount: r.amount, description: r.description });
+    const ledger = [...withdrawals.filter((r) => r.status !== "cancelled").map(entry("out")), ...deposits.filter((r) => r.status !== "cancelled").map(entry("in"))];
     const purchases: NessiePurchase[] = rows.map((r) => ({ merchant_id: r.merchant_id, purchase_date: r.purchase_date, amount: r.amount, status: r.status }));
     const merchants = new Map<string, MerchantInfo>();
     const missing: string[] = [];
@@ -146,7 +195,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
         console.error(maskKey(`merchant lookup failed: ${e?.message ?? e}`));
       }
     }));
-    return { purchases, merchants, balance: typeof account.balance === "number" ? account.balance : null };
+    return { purchases, merchants, balance: typeof account.balance === "number" ? account.balance : null, ledger };
   }
   // Mock mode and mock- accounts: same shape, built from the mock generator (90 days covers every range the screen offers).
   const merchants = new Map<string, MerchantInfo>();
@@ -155,26 +204,28 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
     merchants.set(id, { name: p.merchant, category: p.category });
     return { merchant_id: id, purchase_date: p.date, amount: p.amount, status: "completed" };
   });
-  return { purchases, merchants, balance: MOCK_BALANCE };
+  return { purchases, merchants, balance: MOCK_BALANCE, ledger: [] };
 }
 
 /**
- * Pays a friend back for a hangout: a Nessie transfer from the payer's account to the payee's account.
- * TODO(verify): POST /accounts/{id}/transfers body fields against current Nessie docs.
- * TODO: Nessie stores purchase amounts as whole dollars (12.99 became 12 in the probe); transfers are likely truncated the same way. Verify before relying on split amounts.
- * Returns a transfer id, or a mock id when mocks are on or either account is a mock.
+ * Records a repayment as TWO ledger rows, because a Nessie transfer cannot link two accounts and truncates cents:
+ * a withdrawal on the person who paid back, and a deposit on the person who was paid back. Exact cents ride in the description.
+ * Idempotent per payment: a row that already exists for this payment is not posted again, so a retry posts only the missing half.
+ * Live mode throws on any failure so the caller can undo "paid". Mock mode and mock- accounts do nothing.
+ * Nothing here moves a balance (Nessie never does); it is a record.
  */
-export async function sendTransfer(fromAccount: string | null, toAccount: string | null, amount: number, description: string): Promise<string> {
-  if (fromAccount && toAccount && !fromAccount.startsWith("mock-") && !toAccount.startsWith("mock-") && !useMock()) {
-    try {
-      const t = await nj(`/accounts/${fromAccount}/transfers`, {
-        method: "POST",
-        body: JSON.stringify({ medium: "balance", payee_id: toAccount, amount, transaction_date: new Date().toISOString().slice(0, 10), description }),
-      });
-      if (t.objectCreated?._id) return t.objectCreated._id;
-    } catch (e: any) {
-      console.error(maskKey(`sendTransfer failed: ${e?.message ?? e}`));
-    }
+export async function recordPayback(p: { payId: number; fromAccount: string | null; toAccount: string | null; amount: number; label: string }): Promise<void> {
+  const { payId, fromAccount, toAccount, amount, label } = p;
+  if (!live() || !fromAccount || !toAccount || fromAccount.startsWith("mock-") || toAccount.startsWith("mock-")) return;
+  const [withdrawals, deposits] = await Promise.all([njList(`/accounts/${fromAccount}/withdrawals`), njList(`/accounts/${toAccount}/deposits`)]);
+  const { needWithdrawal, needDeposit } = pendingHalves(withdrawals, deposits, payId);
+  const cents = Math.round(amount * 100);
+  const whole = Math.max(1, Math.round(amount)); // Nessie keeps whole dollars; the exact amount is in the description
+  const common = { medium: "balance", transaction_date: new Date().toISOString().slice(0, 10), status: "completed", amount: whole };
+  if (needWithdrawal) {
+    await nj(`/accounts/${fromAccount}/withdrawals`, { method: "POST", body: JSON.stringify({ ...common, description: splitDescription({ payId, counterpart: toAccount, cents, label }) }) });
   }
-  return `mock-transfer-${Math.random().toString(36).slice(2, 10)}`;
+  if (needDeposit) {
+    await nj(`/accounts/${toAccount}/deposits`, { method: "POST", body: JSON.stringify({ ...common, description: splitDescription({ payId, counterpart: fromAccount, cents, label }) }) });
+  }
 }

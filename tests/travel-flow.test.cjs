@@ -164,8 +164,8 @@ test('Travel dashboard uses the Hangout featured card layout and saved-final rec
   const h=harness('app/travel/page.tsx',[{id:1,name:'bruh',members:2,ready:2,setupDone:true,phase:'failed',hasSavedFinal:true}]);
   const tree=h.render();assert.equal(tree.type,'page');assert.equal(tree.props.variant,'plain');
   const heading=nodes(tree).find(n=>n.type==='h1');assert.equal(text(heading),'Trips');assert.ok(heading.props.className.includes('text-[36px]'));
-  const card=nodes(tree).find(n=>n.type==='article');assert.ok(card.props.className.includes('bg-pistachio'));
-  assert.ok(nodes(card).some(n=>n.props?.className?.includes('h-[84px]')&&n.props.className.includes('bg-matcha')));
+  const card=nodes(tree).find(n=>n.type==='article');assert.ok(card.props.className.includes('bg-votebody'));
+  assert.ok(nodes(card).some(n=>n.props?.className?.includes('h-[84px]')&&n.props.className.includes('bg-votehead')));
   assert.ok(nodes(card).some(n=>n.type==='smiley'&&n.props.size===48));
   assert.match(text(card),/FINAL/);assert.ok(nodes(card).some(n=>n.type==='a'&&n.props.href==='/travel/1/final'&&text(n).includes('View trip')));
   assert.equal(nodes(tree).some(n=>n.type==='a'&&n.props.href==='/travel/new'),false);

@@ -14,3 +14,11 @@ export const isTier = (t: unknown): t is Tier => typeof t === "string" && ORDER.
 /** The lowest valid tier in the list. Nulls are ignored; with none left it is "$$" (the existing default). */
 export const lowestTier = (tiers: (string | null | undefined)[]): Tier =>
   tiers.filter(isTier).sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0] ?? "$$";
+
+/**
+ * The one wording for a group's budget level, used on every screen a group can see:
+ * "$" -> "up to $12 / person", "$$" -> "up to $30 / person", "$$$" -> "$30+ / person".
+ * Fixed ranges only. Never show a member's real spending here.
+ */
+export const tierLabel = (t: Tier): string =>
+  t === "$" ? `up to $${TIER_CUTOFFS[0]} / person` : t === "$$" ? `up to $${TIER_CUTOFFS[1]} / person` : `$${TIER_CUTOFFS[1]}+ / person`;

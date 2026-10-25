@@ -383,6 +383,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
     'react/jsx-runtime': require('react/jsx-runtime'),
     '@/components/Smiley': { Smiley: 'svg' },
     '@/components/Splash': { Confetti: 'svg' },
+    '@/lib/tiers': load('lib/tiers.ts'),
     '@/lib/findingFlow': {
       runFinding: (id, signal, callbacks) => {
         activeSignal = signal;
@@ -459,6 +460,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
     'react/jsx-runtime': require('react/jsx-runtime'),
     '@/components/Smiley': { Smiley: 'svg' },
     '@/components/Splash': { Confetti: 'svg' },
+    '@/lib/tiers': load('lib/tiers.ts'),
     '@/lib/findingFlow': {
       runFinding: (id, signal, handlers) => {
         callbacks = handlers;
@@ -541,6 +543,7 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
       'react/jsx-runtime': require('react/jsx-runtime'),
       '@/components/Smiley': { Smiley: 'svg' },
       '@/components/Splash': { Confetti: 'svg' },
+      '@/lib/tiers': load('lib/tiers.ts'),
       '@/lib/findingFlow': {
         runFinding: () => {
           realRuns++;

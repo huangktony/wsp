@@ -19,6 +19,19 @@
   --page: #fbf8f1;
   --nav: #ffffff;
   --circle: #ffffff; /* fill for the dashed "New" circle */
+  /* Voting-open group cards: same green as before in light mode */
+  --vote-head: #8fb78f;
+  --vote-body: #cbe6c7;
+  --vote-face: #f3a5bc;
+  /* SET UP group card (light values are the original peach look) */
+  --setup-head: #ffc49b;
+  --setup-body: #ffebdd;
+  --setup-pill: #f3a5bc;
+  --setup-pill-ink: #7a1a3f;
+  --setup-face: #ffffff;
+  --setup-btn: #8fb78f;
+  --setup-btn-ink: #1b3a1e;
+  --setup-btn-border: rgb(27 58 30 / 20%);
   --confetti-mint: #cbe6c7;
   --confetti-sage: #8fb78f;
   --surface: #ffffff;
@@ -89,6 +102,17 @@
   --confetti-mint: #d3a9b8; /* background confetti: green turns musty pink */
   --confetti-sage: #b57d92;
   --smiley-ink: #fbd0de; /* light eyes and mouth so the smiley reads on the dark pink face */
+  --vote-head: #c08b74; /* voting open: dusty peach */
+  --vote-body: #7a5a52;
+  --vote-face: #f5cdb8;
+  --setup-head: #3d5566; /* SET UP card: dull slate blue, muted like the other dark cards */
+  --setup-body: #2c3f4c;
+  --setup-pill: #b9d6e4;
+  --setup-pill-ink: #1b2d38;
+  --setup-face: #b9d6e4;
+  --setup-btn: var(--panel);
+  --setup-btn-ink: #ffffff;
+  --setup-btn-border: transparent;
   color-scheme: dark;
 }
 

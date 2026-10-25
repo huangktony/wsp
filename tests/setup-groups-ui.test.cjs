@@ -93,7 +93,7 @@ test('all comfort options expose canonical ranges even without a linked account 
     const tree = picker(suggested, picked);
     const radios = nodes(tree).filter(n => n.props?.role === 'radio');
     assert.equal(radios.length, 3);
-    assert.deepEqual(radios.map(n => text(n)), ['$Up to $12', '$$Over $12 through $30', '$$$Over $30']);
+    assert.deepEqual(radios.map(n => text(n)), ['LowUp to $12', 'Medium$12\u2013$30', 'HighOver $30']);
     assert.equal(radios.filter(n => n.props.tabIndex === 0).length, 1);
     for (const radio of radios) assert.match(radio.props['aria-label'], /per person per stop/);
     assert.match(text(tree), /Prices are estimates/);
@@ -134,7 +134,7 @@ test('failed plans show the provider error and a keyboard-accessible retry inste
     react: { ...react, use: value => value, useMemo: fn => fn() },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: 'inter' }) },
     'next/navigation': { useRouter: () => ({ replace() {} }) }, '@/lib/useSetupGate': { useSetupGate() {} },
-    '@/components/Page': { Page: 'main', Err: 'error' }, '@/components/TierBadge': { TierBadge: 'badge' },
+    '@/components/Page': { Page: 'main', Err: 'error' }, '@/components/TierBadge': { TierBadge: 'badge' }, '@/lib/tiers': tiers,
     '@/components/Skeleton': { Skeleton: 'skeleton', SkeletonBlock: 'block' },
     '@/lib/client': { useApi: () => ({ data: { round: { status: 'failed', search_error: 'Search service unavailable. Try again.' }, plans: [] } }) },
   }).default;

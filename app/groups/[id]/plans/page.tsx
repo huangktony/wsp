@@ -8,6 +8,7 @@ import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
+import { isTier, tierLabel } from "@/lib/tiers";
 import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 
@@ -253,7 +254,7 @@ export default function Plans({
           {data.confirmed > 0 && (
             <span className="chip">{data.confirmed} confirmed</span>
           )}
-          <TierBadge tier={data.round.group_tier} label="Group budget" />
+          <TierBadge tier={isTier(data.round.group_tier) ? tierLabel(data.round.group_tier) : null} label="Group budget" />
         </div>
 
         <InclusionBanner inclusion={data.inclusion} />
@@ -308,7 +309,7 @@ export default function Plans({
                 </div>
                 <p className="mt-1 text-sm font-normal text-secondary">
                   {data.round.slot} · {p.stops.length}{" "}
-                  {p.stops.length === 1 ? "stop" : "stops"} · {p.price_level}
+                  {p.stops.length === 1 ? "stop" : "stops"}
                 </p>
                 <ol className="my-3 space-y-1 text-sm font-normal">
                   {p.stops.map((s: any, i: number) => (

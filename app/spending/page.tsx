@@ -9,7 +9,15 @@ import { api, useApi } from "@/lib/client";
 
 export default function Spending() {
   const [days, setDays] = useState(30);
-  const { data, reload } = useApi<any>(`/api/me/spending?days=${days}`);
+  const { data, error, reload } = useApi<any>(`/api/me/spending?days=${days}`);
+  if (error) {
+    return (
+      <Page title="Spending and budget" tabs>
+        <p className="mb-4 font-semibold text-deep">{error}</p>
+        <button className="btn" onClick={reload}>Retry</button>
+      </Page>
+    );
+  }
   if (!data) return <Page title="Budget" tabs>Loading…</Page>;
   if (!data.linked) {
     return (

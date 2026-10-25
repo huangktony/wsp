@@ -14,12 +14,12 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
      where p.id=$1 and p.user_id=$2`, [Number((await params).id), uid]);
   if (!p) return fail("not your payment", 403);
   // Claim first so a double tap can't record the payment twice.
-  const claimed = await q1("update payments set status='paid' where id=$1 and status='owed' returning id", [p.id]);
+  const claimed = await q1("update payments set status='paid', paid_at=now() where id=$1 and status='owed' returning id", [p.id]);
   if (!claimed) return json({ ok: true });
   try {
     await recordPayback({ payId: p.id, fromAccount: p.from_acct, toAccount: p.to_acct, amount: p.amount, label: `${p.name} hangout` });
   } catch (e: any) {
-    await q("update payments set status='owed' where id=$1", [p.id]);
+    await q("update payments set status='owed', paid_at=null where id=$1", [p.id]);
     console.error(maskKey(`recording the payment failed: ${e?.message ?? e}`));
     return fail("Couldn't record the payment, try again", 502);
   }

@@ -93,3 +93,11 @@ h1, h2, h3 { font-family: var(--font-display); }
   .chip-pink { @apply inline-flex items-center rounded-full bg-pinksoft px-3 py-1 text-xs font-semibold tracking-wide text-ink; }
   .label { @apply mb-1 block text-sm font-semibold text-muted; }
 }
+
+/* Profile distance slider: matcha fill up to the thumb, orchid thumb. */
+.range-wsp { -webkit-appearance: none; appearance: none; height: 44px; background: transparent; cursor: pointer; }
+.range-wsp::-webkit-slider-runnable-track { height: 10px; border-radius: 9999px; background: linear-gradient(to right, var(--matcha) var(--fill), var(--azure) var(--fill)); }
+.range-wsp::-moz-range-track { height: 10px; border-radius: 9999px; background: linear-gradient(to right, var(--matcha) var(--fill), var(--azure) var(--fill)); }
+.range-wsp::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -9px; border-radius: 9999px; background: var(--orchid); border: 3px solid var(--surface); box-shadow: 0 0 0 1.5px var(--outline); }
+.range-wsp::-moz-range-thumb { width: 22px; height: 22px; border-radius: 9999px; background: var(--orchid); border: 3px solid var(--surface); box-shadow: 0 0 0 1.5px var(--outline); }
+.range-wsp:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 9999px; }

@@ -1,6 +1,7 @@
 import { q, q1 } from "@/lib/db";
 import { fail, json, requireUser } from "@/lib/api";
-import { loadSpending, maskKey } from "@/lib/nessie";
+import { isLiveAccount, loadSpending, maskKey } from "@/lib/nessie";
+import { withLocalRecords } from "@/lib/localLedger";
 import { analyze } from "@/lib/analyze";
 import { splitAccounts } from "@/lib/ledger";
 import { budgetSummary, sumOwed } from "@/lib/budget";
@@ -18,7 +19,8 @@ export async function GET() {
   try {
     // One load per request. The tier (always 30 days, same as groups use) and the N-day view both come from it.
     const now = new Date();
-    const data = await loadSpending(u.nessie_account_id);
+    const loaded = await loadSpending(u.nessie_account_id);
+    const data = isLiveAccount(u.nessie_account_id) ? loaded : await withLocalRecords(loaded, uid);
     const { tier, avg, usedDefault } = await computeTier(uid, u.nessie_account_id, data);
     // Names for the people on the other side of a payback, ONLY for users who share a group with the viewer. Anyone else is "a friend".
     const accts = splitAccounts(data.ledger);

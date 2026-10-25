@@ -27,7 +27,7 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
     <button type="button" onClick={click} className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${on ? "border-sage bg-sage text-sageink" : "border-line"}`}>{v}</button>
   );
   return (
-    <Page title="My setup" back={`/groups/${id}`}>
+    <Page title="My setup" back={data?.availability?.length ? `/groups/${id}` : "/groups"}>
       <div className="space-y-6">
         <section><span className="label">When are you free?</span><div className="flex flex-wrap gap-2">{SLOTS.map((s) => <Chip key={s} v={s} on={av.includes(s)} click={() => setAv(toggle(av, s))} />)}</div></section>
         <section><span className="label">Interests</span><div className="flex flex-wrap gap-2">{INTERESTS.map((s) => <Chip key={s} v={s} on={it.includes(s)} click={() => setIt(toggle(it, s))} />)}</div></section>

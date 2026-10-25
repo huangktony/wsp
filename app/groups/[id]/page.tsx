@@ -1,7 +1,10 @@
 "use client";
+
+import { useSetupGate } from "@/lib/useSetupGate";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Avatar } from "@/components/Avatar";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
@@ -19,12 +22,19 @@ const pill = `flex min-h-[48px] w-full items-center justify-center rounded-full 
 const danger = `${pill} bg-maroon text-surface`;
 const quiet = `${pill} border border-outline bg-transparent text-indigo`;
 
-type Member = { id: number; name: string; setup_done: boolean; has_voted: boolean };
+type Member = {
+  id: number;
+  name: string;
+  avatar?: string | null;
+  setup_done: boolean;
+  has_voted: boolean;
+};
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: g, error, reload } = useApi<any>(`/api/groups/${id}`, 4000, true);
   useFindingRedirect(id, g);
+  useSetupGate(id);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);
@@ -33,11 +43,15 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     setCopied(false);
     setCopyError("");
-    return () => { if (copyTimer.current) clearTimeout(copyTimer.current); };
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
   }, [g?.invite_code, id]);
+
   const copyCode = async () => {
     if (!g?.invite_code) return;
     try {
@@ -50,16 +64,26 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       setCopyError("Could not copy. Select and copy the code instead.");
     }
   };
+
   const run = (call: () => Promise<unknown>) => {
     setBusy(true);
     setActionError("");
-    call().then(() => router.push("/groups")).catch((e) => { setActionError(e.message); setBusy(false); });
+    call()
+      .then(() => router.push("/groups"))
+      .catch((e) => {
+        setActionError(e.message);
+        setBusy(false);
+      });
   };
+
   const members: Member[] = g?.members ?? [];
   const others = members.filter((member) => member.id !== g?.me);
   const isOwner = g?.isCreator === true;
   const soloOwner = isOwner && others.length === 0;
-  const open = g?.roundOpen === true, final = g?.round?.status === "final";
+  const needsNewSearch = g?.finding?.needsNewSearch === true || g?.finding?.cityChanged === true;
+  const open = g?.roundOpen === true;
+  const final = g?.round?.status === "final";
+
   // What the progress card is counting. The ready count itself is unchanged.
   const phase = final ? "final plan picked" : open ? "voting" : g?.round?.status === "generating" ? "finding plans" : "setup";
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
@@ -67,6 +91,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const ready = open ? g.voted : members.length - pending.length;
   const progress = total ? Math.round(ready / total * 100) : 0;
   const memberName = (member: Member) => member.id === g.me ? "You" : member.name;
+
   let helper = "Everyone is ready.";
   if (pending.length === 1) {
     helper = `${memberName(pending[0])} ${pending[0].id === g.me ? "have" : "has"} not finished yet. You can find plans now and re-run them when ${pending[0].id === g.me ? "you are" : "they are"} done.`;
@@ -77,6 +102,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   } else if (!members.length) {
     helper = "No members yet.";
   }
+
   if (open) {
     const missing = pending.length === 1
       ? `${memberName(pending[0])} ${pending[0].id === g.me ? "have" : "has"}`
@@ -87,6 +113,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       ? `${missing} not voted yet. Voting closes at the deadline or once everyone has voted on every plan.`
       : "Everyone has voted.";
   }
+
   return (
     <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
@@ -130,7 +157,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <ul>
             {members.map((member, index) => (
               <li key={member.id} className="flex items-center gap-3 border-b border-azure py-3 last:border-b-0">
-                <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{member.name.trim().charAt(0).toUpperCase()}</span>
+                <Avatar name={member.name} src={member.avatar} className={`h-10 w-10 text-base ${avatarColors[index % avatarColors.length]}`} />
                 <span className="min-w-0 flex-1 break-words text-base font-bold">{memberName(member)}</span>
                 <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${(open ? member.has_voted : member.setup_done) ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{open ? (member.has_voted ? "Voted" : "Not voted yet") : (member.setup_done ? "Ready" : "Setting up")}</span>
               </li>
@@ -139,9 +166,14 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
-          {open && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
+          {!final && g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
+          {open && !needsNewSearch && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {!open && !final && <Link href={`/groups/${id}/finding`} className={primary}>Find plans</Link>}
+          {!final && (!open || needsNewSearch) && (
+            <Link href={`/groups/${id}/finding${needsNewSearch ? "?new=1" : ""}`} className={primary}>
+              {needsNewSearch ? "Find new plans" : "Find plans"}
+            </Link>
+          )}
           {final && <RedrawVote id={id} redraw={g.redraw} onChanged={reload} />}
           {!final && <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>}
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">

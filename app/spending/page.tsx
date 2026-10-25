@@ -33,7 +33,7 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 );
 
 export default function Spending() {
-  const { data, error, reload } = useApi<any>("/api/me/spending");
+  const { data, error, reload } = useApi<any>("/api/me/spending", 30000);
   const [open, setOpen] = useState(false);
 
   if (error) {

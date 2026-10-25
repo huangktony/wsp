@@ -7,6 +7,7 @@ import { RedrawVote } from "@/components/RedrawVote";
 import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
+import { splitAmounts, type SplitMode } from "@/lib/split";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const typography = `${inter.className} [&>main>a:first-child]:text-[15px] [&>main>a:first-child]:text-secondary`;
@@ -47,12 +48,21 @@ function FinalSkeleton() {
 export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 4000);
-  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false), [reminded, setReminded] = useState<number | null>(null);
+  // The change being saved, shown right away instead of waiting for the server and the reload.
+  const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
   if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : data && data.round?.status !== "final" ? "No final plan yet." : <FinalSkeleton />}</Page></div>;
 
-  const { round, split, payments } = data;
-  const act = (body: any) => { setBusy(true); setErr(""); return api(`/api/groups/${id}/split`, "POST", body).then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); };
+  const { round, payments } = data;
+  const split = draft
+    ? { ...data.split, mode: draft.mode ?? data.split.mode, ...splitAmounts(plan.stops.map((s: any) => s.cost),
+        data.split.rows.map((x: any) => (x.user_id === data.me && draft.skips ? { ...x, skips: draft.skips } : x)), draft.mode ?? data.split.mode) }
+    : data.split;
+  const act = (body: any, next: typeof draft) => {
+    setBusy(true); setErr(""); setDraft(next);
+    return api(`/api/groups/${id}/split`, "POST", body).then(reload).catch((e) => setErr(e.message)).finally(() => { setDraft(null); setBusy(false); });
+  };
   const me = split.rows.find((x: any) => x.user_id === data.me);
   const payer = split.rows.find((x: any) => x.user_id === split.payerId);
   const others = split.rows.filter((x: any) => x.user_id !== split.payerId && x.amount > 0);
@@ -60,11 +70,14 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const sent = round.requests_sent;
   const myPayment = payments.find((p: any) => p.user_id === data.me);
   const paid = payments.filter((p: any) => p.status === "paid");
+  const unpaid = payments.filter((p: any) => p.status === "owed");
   const pending = payments.filter((p: any) => p.status === "owed").reduce((a: number, p: any) => a + p.amount, 0);
   const maps = `https://www.google.com/maps/dir/${plan.stops.map((s: any) => encodeURIComponent(s.address ? `${s.place}, ${s.address}` : s.place)).join("/")}`;
 
   return (
     <div className={typography}><Page back={`/groups/${id}`}>
+      {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
+      {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>
@@ -94,7 +107,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
                 <p className="text-sm font-semibold text-secondary">~${Number.isInteger(s.cost) ? s.cost : Number(s.cost).toFixed(2)} each</p>
                 {!sent && plan.stops.length > 1 && (
                   <label className="mt-1 flex items-center gap-2 text-sm text-muted">
-                    <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked })} />
+                    <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked }, { skips: e.target.checked ? [...me.skips, i] : me.skips.filter((k: number) => k !== i) })} />
                     I'll skip this stop
                   </label>
                 )}
@@ -116,10 +129,12 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       </section>
 
       {!sent && (
-        <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl bg-mintsoft p-1">
+        <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-mintsoft p-1">
           {([["even", "Split evenly"], ["items", "By item"]] as const).map(([m, label]) => (
-            <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => act({ action: "mode", mode: m })}
-              className={`h-11 rounded-xl text-[15px] font-bold ${split.mode === m ? "bg-surface shadow" : ""} ${!data.isPayer ? "cursor-default" : ""}`}>{label}</button>
+            <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => split.mode !== m && act({ action: "mode", mode: m }, { mode: m })}
+              className={`h-11 rounded-xl text-[15px] font-bold transition-colors ${split.mode === m ? "bg-sage text-sageink shadow-md" : "text-muted"} ${!data.isPayer ? "cursor-default" : ""}`}>
+              {split.mode === m && <span aria-hidden>✓ </span>}{label}
+            </button>
           ))}
         </div>
       )}
@@ -149,13 +164,22 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       <Err msg={err} />
       <div className="mt-5 space-y-3">
         {!sent && data.isPayer && (
-          <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" })}>
+          <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" }, null)}>
             Send {others.length} {others.length === 1 ? "request" : "requests"} via Nessie
           </button>
         )}
         {!sent && !data.isPayer && <p className="text-center text-sm text-muted">Waiting for {payer?.name ?? "the organizer"} to send payment requests. You can still mark stops you'll skip.</p>}
         {sent && (
           <p className="text-center text-sm font-semibold">Paid back {paid.length} of {payments.length}{pending > 0 && ` · ${money(pending)} pending`}</p>
+        )}
+        {sent && data.isPayer && unpaid.length > 0 && (
+          <button className="btn-ghost" disabled={busy} onClick={() => { setBusy(true); setErr(""); api(`/api/groups/${id}/remind`, "POST").then((d) => { setReminded(d.reminded); return reload(); }).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
+            Remind {unpaid.length === 1 ? unpaid[0].name : `${unpaid.length} people`} to pay you back
+          </button>
+        )}
+        {reminded !== null && <p role="status" className="text-center text-sm text-muted">Reminder sent to {reminded} {reminded === 1 ? "person" : "people"}.</p>}
+        {sent && myPayment?.status === "owed" && myPayment.reminded_at && (
+          <p role="status" className="rounded-2xl bg-orchid p-3 text-center text-sm font-semibold text-orchidink">{payer?.name ?? "The organizer"} sent you a reminder to pay back {money(myPayment.amount)}.</p>
         )}
         {sent && myPayment?.status === "owed" && (
           <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>

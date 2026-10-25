@@ -31,3 +31,8 @@ export function setThemePref(pref: ThemePref) {
   } catch {}
   (window as any).__applyTheme?.();
 }
+
+/** The theme currently applied to the page, whether chosen or following the OS. */
+export function resolvedTheme(): "light" | "dark" {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}

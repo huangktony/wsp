@@ -139,3 +139,96 @@ Owned by person 4. Files: `app/groups/[id]/finding`, `plans`, `final`, `app/api/
 Round status values (`plan_rounds.status`): `generating`, `voting`, `vetoed`, `final`, `failed`. Group screens can use these for the card status.
 
 For person 2: the create-group voting deadline (6/12/24/48h) should be saved to `groups.vote_hours`.
+
+### City-aware plan searches
+
+Before starting new plan searches against an existing database, review and apply
+`db/migrations/20261024_round_search_context.sql` through your normal database change process.
+It leaves the existing NOT NULL coordinate constraints intact and records each round's city, distance limit,
+sample-data flag, and safe search error. Existing rounds remain readable before the migration: optional fields are read through JSON,
+and a missing/NULL search city resolves to Austin, TX (30.2672, -97.7431), as agreed
+for legacy rounds. Stored round cities always take precedence. New searches require the migration to preserve their city snapshot.
+The migration has not been applied by the assistant. `db:migrate` runs only the additive CREATE/ALTER statements currently in `db/schema.sql`
+(but DDL can take locks). `db:seed` truncates all eight application tables and resets identities;
+`db:setup` runs that destructive seed after migrating. Never use either for this shared-database update.
+
+Live place search requires `SERPAPI_KEY`. `USE_MOCKS` now controls Nessie/Gemini only;
+it no longer replaces place searches. `USE_SAMPLE_PLACES` is optional and must be
+explicitly enabled to produce synthetic venues, labeled **Sample data** in the UI.
+Leave it unset or disabled for real places. Restart the dev server after env changes.
+No API keys are logged. Search failures appear in the Finding plans screen.
+
+Creation validates a US city and state, geocodes it, and saves the city and coordinates with the creator membership in one transaction. There is currently no city-edit UI for
+existing groups. New rounds snapshot the saved city and the smallest setup-complete member distance
+preference, use the group's saved coordinates when the city matches (otherwise geocode the round's saved city), and filter venues by straight-line miles from that city
+center. Maps results without coordinates are excluded rather than assumed nearby.
+The diagnostic command accepts a city: `npm run places:check -- '$' 'Dallas, TX'`
+(it makes live provider calls and consumes search credits).
+
+### Pending round metadata migration (reviewed October 24, 2026)
+
+The four nullable additions in `db/migrations/20261024_round_search_context.sql` are
+idempotent. No data is backfilled or deleted. After team approval, run only that file
+from the repository root (requires `psql`; loads `.env.local` without printing its values):
+
+```sh
+node --env-file=.env.local -e 'const {spawnSync}=require("node:child_process"); const r=spawnSync("psql",["-X","--set=ON_ERROR_STOP=1","--single-transaction","--file=db/migrations/20261024_round_search_context.sql"],{stdio:"inherit",env:{...process.env,PGDATABASE:process.env.DATABASE_URL}}); if(r.error) console.error("Could not start psql"); process.exit(r.status ?? 1);'
+```
+
+Column audit for the finding/pipeline/voting helpers and API routes, including columns
+returned by shared helpers and table defaults (SQL result aliases and JSON keys are not
+physical columns). Compared against `db/schema.sql` and a read-only live
+`information_schema.columns` query:
+
+| Table | Columns checked | Result |
+| --- | --- | --- |
+| users | id, name, email, password_hash, nessie_customer_id, nessie_account_id, budget_tier, avg_outing_cost, max_distance_mi, interests, created_at | All present |
+| groups | id, name, city, lat, lng, invite_code, created_by, created_at, vote_hours | All present |
+| memberships | group_id, user_id, availability, joined_at, comfort_tier | All present |
+| plan_rounds | id, group_id, status, group_tier, winner_plan_id, created_at, slot, attempt, excluded, vote_deadline, payer_id, split_mode, requests_sent | All present |
+| plan_rounds | search_city (text), search_distance_mi (int), sample_places (boolean), search_error (text) | In repo schema/migration; missing from live database |
+| plans | id, round_id, title, summary, stops, est_cost_per_person, price_level, why_fits | All present |
+| votes | plan_id, user_id, value | All present |
+| payments | id, round_id, user_id, amount, status, transfer_id | All present |
+| stop_skips | round_id, user_id, stop_index | All present |
+
+The live database also has `redraw_votes(round_id, user_id)`, which is not defined in
+this checkout's schema or referenced by its API routes. It was left untouched.
+`lib/finding.ts` is pure code; its counts and `setup_done` values are derived, not
+additional database columns. No other missing columns were found.
+
+
+### Search settings and fresh rounds
+
+Review `db/migrations/20261024_round_search_settings.sql` after the round-search-context
+migration. This adds only `search_settings jsonb`, nullable with no default or backfill.
+Neither migration was applied by the assistant. New searches require both; old plans
+remain readable and are marked out of date until regenerated.
+
+Each new round stores a server-only, canonical snapshot of members' distance, comfort
+and suggested tier, interests, availability, and membership. The group distance is the
+minimum among setup-complete members; the budget is the lowest effective member tier.
+Generation uses that snapshot, including the saved tier and city. Changed settings
+show **Settings changed. Find new plans to update.** on group home. Individual financial
+preferences in the snapshot are never included in the group API response.
+
+Maps requests use distance-dependent zoom (1/2/5/10/20 miles -> 15/14/13/12/11;
+larger distances -> 10). GPS/haversine filtering enforces miles from the city center.
+If fewer than three candidates survive, a single wider viewport is searched, and the
+radius increases in two steps up to the next distance band (above 20 miles, at most
+twice the requested radius). Any expansion is stated in each plan's Why text and the
+actual radius is saved for the Finding screen. Budgets are never relaxed.
+
+Known dollar prices are enforced, including rejecting $$$$ for $$$ groups. Numeric
+price ranges use their midpoint: <=12 is $, <=30 $$, <=60 $$$, otherwise $$$$.
+At $, unpriced restaurants and paid venues are excluded; clearly free outdoor places,
+explicitly free-admission museums/galleries, and normally cheap coffee shops remain
+eligible. Estimated prices stay marked as estimates.
+
+Each category uses its first Maps page; a second page (start=20) is fetched only while
+fewer than eight distinct candidates survive. No deeper pages are requested. Identical
+engine/query/coordinates/zoom/page requests share a bounded 12-hour in-memory cache,
+including concurrent requests. The cache is per process, not in the database; errors
+are not cached. Ratings and review counts determine order, with random ties for variety.
+Changed settings can still produce some of the same good places; different results
+are not guaranteed. Development logs show safe parameters and filter counts, never keys.

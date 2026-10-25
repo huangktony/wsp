@@ -12,6 +12,7 @@
     "nessie:probe": "tsx --env-file=.env.local scripts/nessie-probe.ts",
     "nessie:check": "USE_MOCKS=false tsx --env-file=.env.local scripts/nessie-check.ts",
     "test": "tsx --test tests/*.test.*",
+    "places:check": "USE_MOCKS=false tsx --env-file=.env.local scripts/places-check.ts",
     "db:setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {

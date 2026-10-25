@@ -49,7 +49,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   return (
     <Page back={`/groups/${id}`}>
       <p className="text-sm font-semibold text-muted">{data.group.name}{data.round.attempt > 1 && ` · Round ${data.round.attempt}`}</p>
-      <h1 className="mb-3 text-3xl font-bold">{data.plans.length} plans for {data.round.slot}</h1>
+      <h1 className="mb-3 text-3xl font-bold">{data.plans.length} {data.plans.length === 1 ? "plan" : "plans"} for {data.round.slot}</h1>
       <div className="mb-5 flex flex-wrap gap-2">
         <span className="chip-pink">{left(deadline - now)}</span>
         <span className="chip">{data.voted} of {data.memberCount} voted</span>
@@ -63,7 +63,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
             <article key={p.id} className={`card ${v === "approve" ? "border-2 border-sage" : v === "veto" ? "border-2 border-deep" : ""}`}>
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-xl font-bold">{p.title}</h2>
-                <span className="whitespace-nowrap font-bold text-sageink">~${Math.round(p.cost)} each</span>
+                <span className="whitespace-nowrap font-bold text-sageink">{p.stops.some((s: any) => s.estimated) && "est. "}~${Math.round(p.cost)} each</span>
               </div>
               <p className="mt-1 text-sm text-muted">{data.round.slot} · {p.stops.length} {p.stops.length === 1 ? "stop" : "stops"} · {p.price_level}</p>
               <ol className="my-3 space-y-1 text-sm">

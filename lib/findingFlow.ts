@@ -3,8 +3,9 @@ import { api } from "./client";
 export type FindingGroup = {
   groupTier: string | null;
   finding: {
+    cityChanged?: boolean; needsNewSearch?: boolean; city?: string;
     memberCount: number; maxDistanceMi: number | null; slot: string | null; planCount: number;
-    round: { id: number; status: string; group_tier: string | null } | null;
+    round: { id: number; status: string; group_tier: string | null; sample_places?: boolean; search_error?: string | null } | null;
   };
 };
 export function wait(ms: number, signal: AbortSignal) {
@@ -26,13 +27,13 @@ export async function runFinding(id: string, fresh: boolean, signal: AbortSignal
   signal.throwIfAborted();
   callbacks.update(group);
   const round = group.finding.round;
-  if (group.finding.planCount > 0 && (round?.status === "voting" || (round?.status === "final" && !fresh))) {
+  if (!group.finding.cityChanged && !group.finding.needsNewSearch && group.finding.planCount > 0 && (round?.status === "voting" || (round?.status === "final" && !fresh))) {
     callbacks.ready();
     return;
   }
   const began = now();
   callbacks.started();
-  const claim = round?.status === "generating"
+  const claim = !group.finding.cityChanged && !group.finding.needsNewSearch && round?.status === "generating"
     ? { roundId: round.id }
     : await request<{ roundId: number }>(`/api/groups/${id}/plans`, "POST", undefined, signal);
   while (true) {
@@ -41,7 +42,7 @@ export async function runFinding(id: string, fresh: boolean, signal: AbortSignal
     signal.throwIfAborted();
     callbacks.update(group);
     const current = group.finding.round;
-    if (current?.status === "failed") throw new Error("Couldn't make plans this time. Try again.");
+    if (current?.id === claim.roundId && current.status === "failed") throw new Error(current.search_error || "Couldn't make plans this time. Try again.");
     if (current?.id === claim.roundId && group.finding.planCount > 0 && ["voting", "final", "vetoed"].includes(current.status)) break;
     await pause(1500, signal);
   }

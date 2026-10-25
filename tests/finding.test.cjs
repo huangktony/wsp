@@ -36,7 +36,7 @@ test('finding data uses actual member preferences and includes failed state with
     q: async () => [{ availability: ['Sun afternoon'], max_distance_mi: 9 }, { availability: ['Sun afternoon'], max_distance_mi: 5 }],
     q1: async () => ({ id: 10, status: 'failed', slot: null, group_tier: null, plan_count: 0 }),
   } });
-  const result = await data.getFindingDetails(5);
+  const result = await data.getFindingDetails(5, 'Test city');
   assert.equal(result.memberCount, 2);
   assert.equal(result.slot, 'Sun afternoon');
   assert.equal(result.maxDistanceMi, 5);
@@ -99,14 +99,17 @@ test('server advisory lock gives simultaneous callers one generation owner and r
     let unlock;
     return { release() {}, query: async sql => {
       if (sql.includes('pg_advisory_xact_lock')) { const before = gate; gate = new Promise(resolve => unlock = resolve); await before; }
+      else if (sql.startsWith('select city from groups')) return { rows: [{ city: 'Test city' }] };
+      else if (sql.includes('information_schema.columns')) return { rows: [{ count: 4 }] };
+      else if (sql.startsWith('select min(u.max_distance_mi)')) return { rows: [{ distance: 10 }] };
       else if (sql.startsWith('select id,status,attempt')) return { rows: last ? [last] : [] };
-      else if (sql.startsWith('insert into plan_rounds')) { inserts++; last = { id: inserts, status: 'generating' }; return { rows: [last] }; }
+      else if (sql.startsWith('insert into plan_rounds')) { inserts++; last = { id: inserts, status: 'generating', search_city: 'Test city', sample_places: false }; return { rows: [last] }; }
       else if (sql === 'commit' || sql === 'rollback') unlock?.();
       return { rows: [] };
     } };
   } };
   const { startRound } = load('lib/pipeline.ts', {
-    './db': { pool }, './finding': finding, './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
   });
   const claims = await Promise.all([startRound(5), startRound(5)]);
   assert.equal(inserts, 1);
@@ -140,8 +143,8 @@ test('hidden-tab polling skips requests and visibility resumes fetching', async 
 test('POST only fills the claimed round; concurrent/non-owner requests do not generate', async () => {
   let fills = 0, created = true;
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
-    '@/lib/db': {}, '@/lib/voting': {},
-    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, json: value => value },
+    '@/lib/finding': finding, '@/lib/db': {}, '@/lib/voting': {}, '@/lib/serpapi': {},
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, setupDone: async () => true, json: value => value },
     '@/lib/pipeline': {
       startRound: async () => { const owner = created; created = false; return { roundId: 10, status: 'generating', created: owner }; },
       fillRound: async () => { fills++; },
@@ -163,6 +166,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() { throw Error('Must not navigate on failure'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, callbacks) => {
@@ -201,6 +205,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push: url => navigation.push(url), replace() { throw Error('No automatic navigation'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, handlers) => { callbacks = handlers; return Promise.resolve(); } },
@@ -252,6 +257,7 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
         useEffect: fn => effects.push(fn),
       },
       'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+      '@/lib/useSetupGate': { useSetupGate() {} },
       'next/navigation': { useRouter: () => ({ push() { throw Error('Unexpected navigation'); } }) },
       'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
       '@/lib/findingFlow': { runFinding: () => { realRuns++; return Promise.resolve(); } },
@@ -280,4 +286,185 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
     assert.ok(cleared.includes('timeout'));
     if (enabled) assert.ok(cleared.includes('interval'));
   }
+});
+
+test('new rounds snapshot current city and distance; only same-city in-progress rounds are reused', async () => {
+  let city = 'Houston, TX', last = null, inserts = 0;
+  class MissingCityError extends Error {}
+  const pool = { connect: async () => ({ release() {}, query: async (sql, args) => {
+    if (sql.startsWith('select city')) return { rows: [{ city }] };
+    if (sql.includes('information_schema.columns')) return { rows: [{ count: 4 }] };
+    if (sql.startsWith('select min')) return { rows: [{ distance: 5 }] };
+    if (sql.startsWith('select id,status')) return { rows: last ? [last] : [] };
+    if (sql.startsWith('insert into plan_rounds')) {
+      last = { id: ++inserts, status: 'generating', search_city: args[3], search_distance_mi: args[4], sample_places: args[5] };
+      return { rows: [last] };
+    }
+    return { rows: [] };
+  } }) };
+  const { startRound } = load('lib/pipeline.ts', { './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': { MissingCityError }, './price': {}, './gemini': {} });
+  assert.equal((await startRound(5)).created, true);
+  assert.equal(last.search_city, 'Houston, TX');
+  assert.equal(last.search_distance_mi, 5);
+  city = ' houston, tx ';
+  assert.equal((await startRound(5)).created, false);
+  city = 'Seattle, WA';
+  assert.equal((await startRound(5)).created, true);
+  assert.equal(last.search_city, 'Seattle, WA');
+  last.search_city = null; // Legacy Austin rounds must not be reused for Seattle.
+  assert.equal((await startRound(5)).created, true);
+  city = ' ';
+  await assert.rejects(startRound(5), MissingCityError);
+});
+
+test('generation uses the round snapshot for search and prompt, not later group edits', async () => {
+  const calls = [];
+  const { fillRound } = load('lib/pipeline.ts', {
+    './finding': finding, './split': load('lib/split.ts'),
+    './db': {
+      q1: async sql => { assert.ok(sql.includes("to_jsonb(r)->>'search_city' search_city")); assert.ok(sql.includes('g.city current_city')); return { group_id: 5, search_city: 'Dallas, TX', current_city: 'Seattle, WA', lat: 47.6062, lng: -122.3321, search_distance_mi: 5, sample_places: false }; },
+      q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
+    },
+    './tier': { groupTier: async () => '$' },
+    './serpapi': { categoriesFor: x => x, MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} },
+    './price': { planLevel: () => '$' },
+    './gemini': { generatePlans: async ctx => { calls.push(ctx); return [{ title: 'Cafe', summary: '', stops: [{ place: 'Cafe', time: '2 PM' }], est_cost_per_person: 12, why_fits: '' }]; } },
+  });
+  await fillRound(10, async (cats, city, tier, distance, options) => {
+    assert.equal(city, 'Dallas, TX'); assert.equal(distance, 5); assert.equal(options.sample, false);
+    assert.equal(options.center, undefined); // Never use another city's current coordinates for the snapshot.
+    return [{ name: 'Cafe', address: 'Dallas, TX', cost: 12, price: '$' }];
+  });
+  assert.equal(calls[0].city, 'Dallas, TX');
+});
+
+test('changed-city rounds are replaced instead of immediately showing old plans as ready', async () => {
+  const old = group('voting', 3); old.finding.cityChanged = true;
+  const f = flowFixture([old, { roundId: 10 }, group('voting', 2)]);
+  await f.run(true);
+  assert.equal(f.calls.filter(x => x[1] === 'POST').length, 1);
+  assert.ok(f.events.some(x => x[0] === 'started'));
+  assert.equal(finding.shouldFindPlans(old), false);
+});
+
+
+test('legacy metadata reads use optional JSON fields and fall back without hiding database errors', async () => {
+  const data = load('lib/findingData.ts', { './finding': finding, '@/lib/db': {
+    q: async () => [{ availability: ['Sun afternoon'], max_distance_mi: 8 }],
+    q1: async sql => {
+      for (const key of ['search_city', 'sample_places', 'search_error', 'search_distance_mi']) {
+        assert.ok(sql.includes(`to_jsonb(r)->>'${key}'`));
+        assert.ok(!sql.includes(`r.${key}`));
+      }
+      return { id: 1, status: 'voting', plan_count: 2, search_city: null, sample_places: null };
+    },
+  } });
+  const result = await data.getFindingDetails(1, 'Houston, TX');
+  assert.equal(result.city, 'Austin, TX');
+  assert.equal(result.round.search_city, 'Austin, TX');
+  assert.equal(result.maxDistanceMi, 8);
+  assert.equal(result.needsNewSearch, true);
+  const broken = load('lib/findingData.ts', { './finding': finding, '@/lib/db': {
+    q: async () => [], q1: async () => { throw Error('database unavailable'); },
+  } });
+  await assert.rejects(broken.getFindingDetails(1, 'Houston, TX'), /database unavailable/);
+});
+
+test('pending migration keeps legacy voting rounds usable and rejects new rounds before insertion', async () => {
+  let last = { id: 1, status: 'voting', search_city: null, sample_places: null };
+  const statements = [];
+  const pool = { connect: async () => ({ release() {}, query: async sql => {
+    statements.push(sql);
+    if (sql.startsWith('select city')) return { rows: [{ city: 'Austin, TX' }] };
+    if (sql.startsWith('select id,status')) return { rows: last ? [last] : [] };
+    if (sql.includes('information_schema.columns')) return { rows: [{ count: 0 }] };
+    return { rows: [] };
+  } }) };
+  const { startRound, SearchSchemaPendingError } = load('lib/pipeline.ts', {
+    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+  });
+  assert.equal((await startRound(5)).created, false);
+  last = null;
+  await assert.rejects(startRound(5), SearchSchemaPendingError);
+  assert.equal(statements.some(sql => sql.startsWith('insert')), false);
+  assert.equal(statements.at(-1), 'rollback');
+});
+
+
+test('round city resolver preserves Houston snapshots and resolves NULL or absent snapshots to Austin', () => {
+  const houston = { city: 'Houston, TX', lat: 29.7604, lng: -95.3698 };
+  const saved = finding.resolveRoundCity({ search_city: 'Houston, TX' }, houston);
+  assert.equal(saved.city, 'Houston, TX');
+  assert.equal(saved.coords.lat, houston.lat);
+  assert.equal(saved.coords.lng, houston.lng);
+  for (const round of [{ search_city: null }, {}]) {
+    const legacy = finding.resolveRoundCity(round, houston);
+    assert.equal(legacy.city, 'Austin, TX');
+    assert.equal(legacy.coords.lat, 30.2672);
+    assert.equal(legacy.coords.lng, -97.7431);
+  }
+});
+
+test('legacy generation passes Austin coordinates and city to search and plan writer, never Houston', async () => {
+  for (const snapshot of [{ search_city: null }, {}]) {
+    let promptCity;
+    const { fillRound } = load('lib/pipeline.ts', {
+      './finding': finding, './split': load('lib/split.ts'),
+      './db': {
+        q1: async () => ({ ...snapshot, group_id: 5, current_city: 'Houston, TX', lat: 29.7604, lng: -95.3698, search_distance_mi: 5 }),
+        q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
+      },
+      './tier': { groupTier: async () => '$' },
+      './serpapi': { categoriesFor: x => x, MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} },
+      './price': { planLevel: () => '$' },
+      './gemini': { generatePlans: async ctx => {
+        promptCity = ctx.city;
+        return [{ title: 'Cafe', summary: '', stops: [{ place: 'Cafe', time: '2 PM' }], est_cost_per_person: 12, why_fits: '' }];
+      } },
+    });
+    await fillRound(10, async (cats, city, tier, distance, options) => {
+      assert.equal(city, 'Austin, TX');
+      assert.equal(options.center.latitude, 30.2672);
+      assert.equal(options.center.longitude, -97.7431);
+      return [{ name: 'Cafe', cost: 12, price: '$' }];
+    });
+    assert.equal(promptCity, 'Austin, TX');
+  }
+});
+
+test('merged setup gate protects normal finding but keeps the allowed loading preview local', async () => {
+  for (const [env, allowPreview, query, expectedCalls] of [
+    [{ NODE_ENV: 'development' }, true, '?preview=loading', 0],
+    [{ NODE_ENV: 'production' }, true, '?preview=loading', 1],
+    [{ NODE_ENV: 'production', NEXT_PUBLIC_ENABLE_PREVIEW: 'true' }, true, '?preview=loading', 0],
+    [{ NODE_ENV: 'development' }, false, '?preview=loading', 1],
+    [{ NODE_ENV: 'development' }, true, '', 1],
+  ]) {
+    const effects = [], redirects = [];
+    let calls = 0;
+    const { useSetupGate } = load('lib/useSetupGate.ts', {
+      react: { useEffect: fn => effects.push(fn) },
+      'next/navigation': { useRouter: () => ({ replace: path => redirects.push(path) }) },
+      './client': { api: async () => { calls++; return { availability: [] }; } },
+    }, { process: { env }, window: { location: { search: query } }, URLSearchParams, AbortController });
+    useSetupGate('5', allowPreview);
+    const cleanup = effects[0]();
+    await Promise.resolve();
+    assert.equal(calls, expectedCalls);
+    assert.equal(redirects.length, expectedCalls);
+    if (expectedCalls) assert.equal(redirects[0], '/groups/5/setup');
+    cleanup?.();
+  }
+});
+
+test('merged plans POST rejects unfinished setup before claiming or generating a round', async () => {
+  const { POST } = load('app/api/groups/[id]/plans/route.ts', {
+    '@/lib/finding': finding, '@/lib/db': {}, '@/lib/voting': {}, '@/lib/serpapi': {},
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, setupDone: async () => false,
+      fail: (error, status) => ({ error, status }) },
+    '@/lib/pipeline': { startRound: () => { throw Error('Must not start a round'); } },
+  });
+  const response = await POST({}, { params: Promise.resolve({ id: '5' }) });
+  assert.equal(response.status, 409);
+  assert.equal(response.error, 'finish your setup first');
 });

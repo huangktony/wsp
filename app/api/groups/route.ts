@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { q, q1 } from "@/lib/db";
+import { pool, q } from "@/lib/db";
 import { fail, json, requireUser } from "@/lib/api";
 import { generateInviteCode } from "@/lib/inviteCode";
-
-// TODO(decision): no geocoder wired up; known cities resolve, anything else falls back to Austin.
-const CITIES: Record<string, [number, number]> = { austin: [30.2672, -97.7431], dallas: [32.7767, -96.797], houston: [29.7604, -95.3698], "san antonio": [29.4241, -98.4936], "new york": [40.7128, -74.006] };
+import { geocodeCity } from "@/lib/serpapi";
+import { normalizeUSCity, US_CITY_ERROR } from "@/lib/usCities";
 
 export async function GET() {
   const uid = await requireUser();
@@ -20,25 +19,41 @@ export async function GET() {
   return json(rows.map((r) => ({ ...r, status: r.round_status === "voting" ? "VOTING OPEN" : r.round_status === "final" ? "FINAL" : "SET UP" })));
 }
 
-const Body = z.object({ name: z.string().min(1), city: z.string().min(1) });
+const Body = z.object({ name: z.string().trim().min(1), city: z.string() });
 export async function POST(req: Request) {
   const uid = await requireUser();
   if (typeof uid !== "number") return uid;
   const body = await req.json().catch(() => null);
   const p = Body.safeParse(body);
   if (!p.success) return fail("name and city required");
-  const key = p.data.city.toLowerCase().split(",")[0].trim();
-  const [lat, lng] = CITIES[key] ?? CITIES.austin;
-  let g: { id: number; invite_code: string } | null;
-  for (let attempt = 0; ; attempt++) {
-    const inviteCode = generateInviteCode(attempt < 10 ? 3 : 4);
-    // Target only invite-code conflicts; unrelated database errors must surface.
-    // The database arbitrates uniqueness atomically, including concurrent creates.
-    g = await q1<{ id: number; invite_code: string }>(
-      "insert into groups(name,city,lat,lng,invite_code,created_by) values($1,$2,$3,$4,$5,$6) on conflict (invite_code) do nothing returning id,invite_code",
-      [p.data.name, p.data.city, lat, lng, inviteCode, uid]);
-    if (g) break;
+  const city = normalizeUSCity(p.data.city);
+  if (!city) return fail(US_CITY_ERROR);
+  let location;
+  try {
+    location = await geocodeCity(`${city}, United States`);
+  } catch {
+    return fail("We couldn't find that city. Check the spelling or try again.", 422);
   }
-  await q("insert into memberships(group_id,user_id) values($1,$2)", [g!.id, uid]);
-  return json({ id: g.id, inviteCode: g.invite_code });
+  // Geocode before opening the transaction; no rows are created on provider failure.
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("begin");
+    let g: { id: number; invite_code: string };
+    for (let attempt = 0; ; attempt++) {
+      const inviteCode = generateInviteCode(attempt < 10 ? 3 : 4);
+      const result = await client.query<{ id: number; invite_code: string }>(
+        "insert into groups(name,city,lat,lng,invite_code,created_by) values($1,$2,$3,$4,$5,$6) on conflict (invite_code) do nothing returning id,invite_code",
+        [p.data.name, city, location.latitude, location.longitude, inviteCode, uid]);
+      if (result.rows[0]) { g = result.rows[0]; break; }
+    }
+    await client.query("insert into memberships(group_id,user_id) values($1,$2)", [g.id, uid]);
+    await client.query("commit");
+    return json({ id: g.id, inviteCode: g.invite_code });
+  } catch {
+    if (client) await client.query("rollback").catch(() => {});
+    return fail("We couldn't create your group. Try again.", 500);
+  } finally {
+    client?.release();
+  }
 }

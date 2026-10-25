@@ -12,6 +12,9 @@ const url = (p: string) => `${BASE}${p}${p.includes("?") ? "&" : "?"}key=${proce
 /** Live mode: key set and mocks not forced. In live mode nothing falls back to mock data. */
 const live = () => !useMock();
 
+/** True when this account's hangouts and paybacks are recorded in Nessie. Otherwise they only exist in our database. */
+export const isLiveAccount = (accountId: string | null) => live() && !!accountId && !accountId.startsWith("mock-");
+
 /** Never let the API key reach a log line or an error message. */
 export function maskKey(s: string): string {
   const k = process.env.NESSIE_API_KEY;

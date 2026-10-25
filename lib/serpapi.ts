@@ -9,30 +9,6 @@ export type Place = {
   rating: number; address: string; hours?: string; type?: string;
 };
 
-const place = (name: string, category: string, price: Tier, rating: number, address: string, cost = estCost(price)): Place =>
-  ({ name, category, price, cost, priceEstimated: true, rating, address });
-
-const MOCK: Record<string, Place[]> = {
-  food: [
-    place("Torchy's Tacos", "food", "$", 4.5, "2801 Guadalupe St"),
-    place("Franklin Barbecue", "food", "$$", 4.8, "900 E 11th St"),
-    place("Uchi", "food", "$$$", 4.7, "801 S Lamar Blvd"),
-  ],
-  coffee: [
-    place("Houndstooth Coffee", "coffee", "$", 4.6, "401 Congress Ave"),
-    place("Merit Coffee", "coffee", "$", 4.5, "1 Texas Pl"),
-  ],
-  outdoors: [
-    place("Barton Springs Pool", "outdoors", "$", 4.8, "2131 William Barton Dr", 0),
-    place("Lady Bird Lake Kayaks", "outdoors", "$$", 4.6, "2418 Stratford Dr"),
-  ],
-  entertainment: [
-    place("Alamo Drafthouse", "entertainment", "$$", 4.6, "320 E 6th St"),
-    place("Peter Pan Mini Golf", "entertainment", "$", 4.7, "1207 Barton Springs Rd"),
-    place("Emo's Austin", "entertainment", "$$", 4.4, "2015 E Riverside Dr"),
-  ],
-};
-
 /** The search term depends on the group's budget, so a "$" group searches for cheap places. */
 const QUERY: Record<string, Record<Tier, string>> = {
   food: { $: "cheap eats", $$: "restaurants", $$$: "upscale restaurants" },
@@ -57,37 +33,80 @@ export function categoriesFor(interests: string[]): string[] {
   return [...new Set([...picks, ...fallback])].slice(0, 3);
 }
 
-export type SearchFn = (cat: string, tier: Tier, lat: number, lng: number) => Promise<Place[]>;
+export class PlaceSearchError extends Error {
+  constructor() { super("We couldn't search places right now. Try again."); }
+}
+export class MissingCityError extends Error {
+  constructor() { super("Add a city to your group"); }
+}
+export type Coordinates = { latitude: number; longitude: number };
+export type SearchOptions = { fetch?: typeof fetch; sample?: boolean; center?: Coordinates };
 
-/** Never let the API key reach a log line. */
-function maskKey(text: string): string {
-  const k = process.env.SERPAPI_KEY;
-  const t = k ? text.split(k).join("***") : text;
-  return t.replace(/api_key=[^&\s"]*/g, "api_key=***");
+function coordinates(value: any): Coordinates | null {
+  return value && Number.isFinite(value.latitude) && Number.isFinite(value.longitude)
+    && Math.abs(value.latitude) <= 90 && Math.abs(value.longitude) <= 180 ? value : null;
 }
 
-const search: SearchFn = async (cat, tier, lat, lng) => {
-  const q = queryFor(cat, tier);
-  if (process.env.USE_MOCKS === "true" || !q) return MOCK[cat] ?? [];
-  // Mock places keep the demo alive when the real search is unavailable, but every fallback is logged so the log shows which places are real.
-  const fallback = (why: string) => { console.error(maskKey(`serpapi: using MOCK places for "${cat}" (${why})`)); return MOCK[cat] ?? []; };
-  if (!process.env.SERPAPI_KEY) return fallback("no SERPAPI_KEY");
+/** Never propagate provider response bodies, URLs, or fetch errors containing credentials. */
+async function maps(params: Record<string, string>, request: typeof fetch) {
+  const key = process.env.SERPAPI_KEY?.trim();
+  if (!key) throw new PlaceSearchError();
   try {
-    const u = new URL("https://serpapi.com/search.json");
-    u.search = new URLSearchParams({ engine: "google_maps", q, ll: `@${lat},${lng},14z`, type: "search", api_key: process.env.SERPAPI_KEY }).toString();
-    const res = await fetch(u, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return fallback(`http ${res.status}`);
-    const data = await res.json();
-    const out: Place[] = (data.local_results ?? []).slice(0, 6).map((r: any) => placeFromResult(r, cat, tier));
-    return out.length ? out : fallback("empty result");
-  } catch (e: any) {
-    return fallback(`error: ${e?.cause?.code ?? e?.message ?? e}`);
-  }
-};
+    const url = new URL("https://serpapi.com/search.json");
+    url.search = new URLSearchParams({ engine: "google_maps", type: "search", ...params, api_key: key }).toString();
+    const response = await request(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new PlaceSearchError();
+    const data = await response.json();
+    if (data.error || data.search_metadata?.status === "Error") throw new PlaceSearchError();
+    return data;
+  } catch { throw new PlaceSearchError(); }
+}
 
-/** HARD RULE: never returns a place above `maxTier`. Fewer places is fine; there is no fallback to over-budget ones. */
-export async function findPlaces(cats: string[], lat: number, lng: number, maxTier: string, searchFn: SearchFn = search): Promise<Place[]> {
-  const all = (await Promise.all(cats.map((c) => searchFn(c, maxTier as Tier, lat, lng)))).flat();
-  // TODO(verify): out-of-range filter needs gps_coordinates distance; the search is already centered on the group.
-  return all.filter((p) => rank(p.price) <= rank(maxTier));
+export async function geocodeCity(city: string, request: typeof fetch = fetch): Promise<Coordinates> {
+  if (!city.trim()) throw new MissingCityError();
+  const data = await maps({ q: city.trim() }, request);
+  const ll = data.search_parameters?.ll ?? data.search_metadata?.ll;
+  const match = typeof ll === "string" ? ll.match(/^@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),/) : null;
+  const center = coordinates(data.place_results?.gps_coordinates)
+    ?? coordinates(data.local_results?.[0]?.gps_coordinates)
+    ?? coordinates(data.search_metadata?.gps_coordinates)
+    ?? coordinates(data.search_parameters?.gps_coordinates)
+    ?? (match ? coordinates({ latitude: Number(match[1]), longitude: Number(match[2]) }) : null);
+  if (!center) throw new PlaceSearchError();
+  return center;
+}
+
+/** Straight-line miles from the selected city's center. Unknown coordinates are excluded. */
+export function distanceMiles(a: Coordinates, b: Coordinates) {
+  const radians = (n: number) => n * Math.PI / 180;
+  const h = Math.sin(radians(b.latitude - a.latitude) / 2) ** 2
+    + Math.cos(radians(a.latitude)) * Math.cos(radians(b.latitude)) * Math.sin(radians(b.longitude - a.longitude) / 2) ** 2;
+  return 3958.8 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
+}
+
+/** No place cache or fallback: every live search is tied to the round's city and category. */
+export async function findPlaces(cats: string[], city: string, maxTier: string, maxDistanceMi: number, options: SearchOptions = {}): Promise<Place[]> {
+  city = city.trim();
+  if (!city) throw new MissingCityError();
+  if (!Number.isFinite(maxDistanceMi) || maxDistanceMi <= 0) throw new PlaceSearchError();
+  if (options.sample ?? process.env.USE_SAMPLE_PLACES === "true") {
+    // Explicit synthetic demo data, never mistaken for real venues or addresses.
+    return cats.filter(cat => queryFor(cat, maxTier as Tier)).map(cat => ({
+      name: `Sample ${cat} venue`, category: cat, price: "$" as Tier, cost: estCost("$"), priceEstimated: true,
+      rating: 0, address: `Sample location in ${city} (not a real venue)`,
+    }));
+  }
+  const request = options.fetch ?? fetch;
+  const center = coordinates(options.center) ?? await geocodeCity(city, request);
+  const all = (await Promise.all(cats.map(async cat => {
+    const query = queryFor(cat, maxTier as Tier);
+    if (!query) return [];
+    const data = await maps({ q: `${query} in ${city}`, ll: `@${center.latitude},${center.longitude},14z` }, request);
+    if (data.local_results != null && !Array.isArray(data.local_results)) throw new PlaceSearchError();
+    return (data.local_results ?? []).filter((result: any) => {
+      const point = coordinates(result.gps_coordinates);
+      return typeof result.title === "string" && point && distanceMiles(center, point) <= maxDistanceMi;
+    }).slice(0, 6).map((result: any) => placeFromResult(result, cat, maxTier as Tier));
+  }))).flat();
+  return all.filter(p => rank(p.price) <= rank(maxTier));
 }

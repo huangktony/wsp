@@ -1,8 +1,8 @@
-import { bestSlot } from "./finding";
+import { bestSlot, resolveRoundCity, sameCity } from "./finding";
 export { bestSlot } from "./finding";
 import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
-import { categoriesFor, findPlaces, type Place } from "./serpapi";
+import { categoriesFor, findPlaces, MissingCityError, PlaceSearchError, type Place } from "./serpapi";
 import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
 import { splitAmounts, type SplitMode } from "./split";
@@ -17,6 +17,17 @@ import { splitAmounts, type SplitMode } from "./split";
 
 /** Nothing within the group budget was found. The message is shown to the user as is. */
 export class NoPlacesError extends Error {}
+export class SearchSchemaPendingError extends Error {
+  constructor() { super("Plan search needs a database update. Ask the group organizer to apply the round search migration."); }
+}
+
+/** Check explicitly before writing optional metadata; never recover from a failed SQL statement. */
+async function hasSearchMetadata(query: (sql: string, args: unknown[]) => Promise<{ rows: any[] }>) {
+  const result = await query(
+    "select count(*)::int count from information_schema.columns where table_schema=current_schema() and table_name='plan_rounds' and column_name=any($1::text[])",
+    [["search_city", "search_distance_mi", "sample_places", "search_error"]]);
+  return result.rows[0]?.count === 4;
+}
 
 /**
  * Claims a new round for the group, or returns the round already in progress.
@@ -27,18 +38,25 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
   try {
     await c.query("begin");
     await c.query("select pg_advisory_xact_lock(4242, $1)", [groupId]);
+    const group = (await c.query("select city from groups where id=$1 for share", [groupId])).rows[0];
+    const city = group?.city?.trim();
+    if (!city) throw new MissingCityError();
+    const sample = process.env.USE_SAMPLE_PLACES === "true";
     // A round stuck in generating for 2+ minutes crashed. Mark it failed so a new one can start.
     await c.query("update plan_rounds set status='failed' where group_id=$1 and status='generating' and created_at < now() - interval '2 minutes'", [groupId]);
-    const last = (await c.query("select id,status,attempt,excluded from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
-    if (last && (last.status === "generating" || last.status === "voting")) {
+    const last = (await c.query("select id,status,attempt,excluded,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
+    if (last && sameCity(resolveRoundCity(last).city, city) && (last.sample_places ?? false) === sample && (last.status === "generating" || last.status === "voting")) {
       await c.query("commit");
       return { roundId: last.id, status: last.status, created: false };
     }
     // After an all-veto round, carry the attempt count and the places to leave out.
-    const vetoed = last?.status === "vetoed";
+    const vetoed = last?.status === "vetoed" && sameCity(resolveRoundCity(last).city, city) && (last.sample_places ?? false) === sample;
     const excluded: string[] = vetoed ? last.excluded : [];
     const attempt = vetoed ? last.attempt + 1 : 1;
-    const r = await c.query("insert into plan_rounds(group_id,status,attempt,excluded) values($1,'generating',$2,$3) returning id", [groupId, attempt, excluded]);
+    if (!(await hasSearchMetadata((sql, args) => c.query(sql, args)))) throw new SearchSchemaPendingError();
+    const preferences = (await c.query("select min(u.max_distance_mi)::int distance from memberships m join users u on u.id=m.user_id where m.group_id=$1", [groupId])).rows[0];
+    if (!preferences?.distance) throw new Error("No group distance preference available");
+    const r = await c.query("insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places) values($1,'generating',$2,$3,$4,$5,$6) returning id", [groupId, attempt, excluded, city, preferences.distance, sample]);
     await c.query("commit");
     return { roundId: r.rows[0].id, status: "generating", created: true };
   } catch (e) {
@@ -52,7 +70,12 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
 /** Runs the engine for a claimed round: shared slot -> group tier -> places -> 3 plans -> open voting. */
 export async function fillRound(roundId: number, find: typeof findPlaces = findPlaces): Promise<void> {
   try {
-    const round = await q1<any>("select r.id,r.group_id,r.excluded,g.city,g.lat,g.lng,g.vote_hours from plan_rounds r join groups g on g.id=r.group_id where r.id=$1", [roundId]);
+    const round = await q1<any>(`select r.id,r.group_id,r.excluded,to_jsonb(r)->>'search_city' search_city,
+      coalesce((to_jsonb(r)->>'search_distance_mi')::int,
+        (select min(u.max_distance_mi)::int from memberships m join users u on u.id=m.user_id where m.group_id=r.group_id)) search_distance_mi,
+      (to_jsonb(r)->>'sample_places')::boolean sample_places,g.city current_city,g.lat,g.lng,g.vote_hours
+      from plan_rounds r join groups g on g.id=r.group_id where r.id=$1`, [roundId]);
+    const { city, coords } = resolveRoundCity(round, { city: round.current_city, lat: round.lat, lng: round.lng });
     const members = await q<any>("select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1", [round.group_id]);
     // Members who haven't finished setup don't drag the slot or interests down.
     const ready = members.filter((m) => (m.availability as string[]).length);
@@ -64,12 +87,12 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
     const interests = shared.length ? shared : [...new Set(sets.flat())];
 
     const excluded = new Set<string>(round.excluded ?? []);
-    const found = await find(categoriesFor(interests), round.lat, round.lng, tier);
+    const found = await find(categoriesFor(interests), city, tier, round.search_distance_mi, { sample: round.sample_places === true, center: coords ? { latitude: coords.lat, longitude: coords.lng } : undefined });
     const fresh = found.filter((p) => !excluded.has(p.name));
     // If leaving out vetoed places empties the list, reuse them rather than show nothing.
     const places = fresh.length >= 2 ? fresh : found;
-    const drafts = await generatePlans({ city: round.city, slot, tier, interests, places, avoid: [...excluded] });
-    if (!drafts.length) throw new NoPlacesError(`No places found within the ${tier} budget near ${round.city}. Try more interests or a bigger distance.`);
+    const drafts = await generatePlans({ city, slot, tier, interests, places, avoid: [...excluded] });
+    if (!drafts.length) throw new NoPlacesError(`No places found within the ${tier} budget near ${city}. Try more interests or a bigger distance.`);
 
     const byName = new Map(places.map((p) => [p.name.toLowerCase(), p] as [string, Place]));
     for (const d of drafts) {
@@ -84,7 +107,13 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
     const hours = round.vote_hours ?? 24;
     await q("update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1", [roundId, slot, tier, hours]);
   } catch (e) {
-    await q("update plan_rounds set status='failed' where id=$1", [roundId]);
+    const message = e instanceof MissingCityError || e instanceof PlaceSearchError || e instanceof NoPlacesError
+      ? e.message : "Couldn't make plans this time. Try again.";
+    if (await hasSearchMetadata(async (sql, args) => ({ rows: await q(sql, args) }))) {
+      await q("update plan_rounds set status='failed',search_error=$2 where id=$1", [roundId, message]);
+    } else {
+      await q("update plan_rounds set status='failed' where id=$1", [roundId]);
+    }
     throw e;
   }
 }

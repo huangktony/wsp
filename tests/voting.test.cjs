@@ -22,7 +22,7 @@ function fixture() {
   const votes = new Map();
   const plans = [{ id: 101, round_id: 10 }, { id: 102, round_id: 10 }, { id: 201, round_id: 20 }];
   const members = [{ id: 1, name: 'One', setup_done: false }, { id: 2, name: 'Two', setup_done: false }];
-  const api = { requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
+  const api = { setupDone: async () => true, requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
   const db = {
     q: async (sql, args) => {
       if (sql.includes('select m.user_id, exists')) {
@@ -53,7 +53,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
       throw Error(`Unexpected query: ${sql}`);
     },
   };
-  const mocks = { '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
+  const mocks = { '@/lib/finding': load('lib/finding.ts', {}), '@/lib/serpapi': { MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} }, '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
@@ -147,6 +147,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/font/google': { Inter: () => ({ className: '' }) },
     react: { ...h.react, use: p => p, useMemo: fn => fn() },
     'react/jsx-runtime': require('react/jsx-runtime'),
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
@@ -215,6 +216,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push() {} }) },
     '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },
   }).default;

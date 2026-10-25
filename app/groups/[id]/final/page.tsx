@@ -28,7 +28,7 @@ function downloadIcs(title: string, slot: string, from: string, stops: any[]) {
 export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 4000);
-  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false), [reminded, setReminded] = useState<number | null>(null);
   // The change being saved, shown right away instead of waiting for the server and the reload.
   const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
@@ -50,11 +50,14 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const sent = round.requests_sent;
   const myPayment = payments.find((p: any) => p.user_id === data.me);
   const paid = payments.filter((p: any) => p.status === "paid");
+  const unpaid = payments.filter((p: any) => p.status === "owed");
   const pending = payments.filter((p: any) => p.status === "owed").reduce((a: number, p: any) => a + p.amount, 0);
   const maps = `https://www.google.com/maps/dir/${plan.stops.map((s: any) => encodeURIComponent(s.address ? `${s.place}, ${s.address}` : s.place)).join("/")}`;
 
   return (
     <div className={typography}><Page back={`/groups/${id}`}>
+      {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
+      {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>
@@ -148,6 +151,15 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         {!sent && !data.isPayer && <p className="text-center text-sm text-muted">Waiting for {payer?.name ?? "the organizer"} to send payment requests. You can still mark stops you'll skip.</p>}
         {sent && (
           <p className="text-center text-sm font-semibold">Paid back {paid.length} of {payments.length}{pending > 0 && ` · ${money(pending)} pending`}</p>
+        )}
+        {sent && data.isPayer && unpaid.length > 0 && (
+          <button className="btn-ghost" disabled={busy} onClick={() => { setBusy(true); setErr(""); api(`/api/groups/${id}/remind`, "POST").then((d) => { setReminded(d.reminded); return reload(); }).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
+            Remind {unpaid.length === 1 ? unpaid[0].name : `${unpaid.length} people`} to pay you back
+          </button>
+        )}
+        {reminded !== null && <p role="status" className="text-center text-sm text-muted">Reminder sent to {reminded} {reminded === 1 ? "person" : "people"}.</p>}
+        {sent && myPayment?.status === "owed" && myPayment.reminded_at && (
+          <p role="status" className="rounded-2xl bg-orchid p-3 text-center text-sm font-semibold text-orchidink">{payer?.name ?? "The organizer"} sent you a reminder to pay back {money(myPayment.amount)}.</p>
         )}
         {sent && myPayment?.status === "owed" && (
           <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>

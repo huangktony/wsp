@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api,useApi } from '@/lib/client';
 import { findingDestination } from '@/lib/travel/flow';
-import { TravelFrame,TravelSkeleton,TravelArt,ComparisonCards,DiscoverySummaryNote,travelButton,travelQuiet,travelFocus } from '@/components/TravelUI';
+import { TravelFrame,TravelSkeleton,TravelArt,ComparisonCards,DiscoverySummaryNote,travelButton,travelQuiet } from '@/components/TravelUI';
 export default function FindingFlights({params}:{params:Promise<{id:string}>}) {
   const {id}=use(params);const router=useRouter();
   const {data,error,reload}=useApi<any>(`/api/travel/${id}`,3000,true);
@@ -40,25 +40,22 @@ export default function FindingFlights({params}:{params:Promise<{id:string}>}) {
     {!data&&!error&&<TravelSkeleton/>}
     {(error||err)&&<p role="alert" className="rounded-2xl border border-orchid p-4 text-sm text-maroon">{err||error}</p>}
     {data&&<>
-      <p className="text-sm text-secondary">Discovering destinations for {data.name}, with round-trip flights that fit everyone’s private limits.</p>
-      {(busy||pending)&&<p role="status" className="rounded-2xl bg-pistachio p-4 text-sm">Finding fares for everyone. This can take up to three minutes. You can return to the lobby; the search keeps its place.</p>}
-      {comparison?.stalled&&<p role="status" className="text-sm text-maroon">This search stopped responding. The organizer can retry without using the old results.</p>}
-      {comparison?.status==='stale'&&<p role="status" className="text-sm text-secondary">Trip settings changed. Start a new comparison using the current travelers and dates.</p>}
-      {comparison?.status==='vetoed'&&<p role="status" className="text-sm text-secondary">No destination won this round. You can change shared dates in the lobby or review your own private budget before searching again.</p>}
-      {comparison?.expired&&<p role="status" className="text-sm text-secondary">These fare estimates have expired. Votes and the saved choice remain available; recheck fares before booking.</p>}
+      {(busy||pending)&&<p role="status" className="rounded-2xl bg-pistachio p-4 text-sm">Searching fares. This can take up to 3 minutes; you can leave this page.</p>}
+      {comparison?.stalled&&<p role="status" className="text-sm text-maroon">Search stopped responding. The organizer can retry.</p>}
+      {comparison?.status==='stale'&&<p role="status" className="text-sm text-secondary">Trip changed. Run a new search.</p>}
+      {comparison?.status==='vetoed'&&<p role="status" className="text-sm text-secondary">No destination won. Try new dates.</p>}
+      {comparison?.expired&&<p role="status" className="text-sm text-secondary">Fares expired. Votes are saved.</p>}
       {comparison?.error&&<p role="alert" className="text-sm text-maroon">{comparison.error}</p>}
       {comparison?.status!=='generating'&&<DiscoverySummaryNote summary={comparison?.summary}/>}
       {comparison?.status==='failed'&&comparison.options.length>0&&<ComparisonCards options={comparison.options} myVotes={[]} voting={false}/>}
       {comparison?.status==='voting'&&<Link href={`/travel/${id}/plans`} className={`${travelButton} w-full`}>Continue to destination voting</Link>}
       {saved&&<Link href={`/travel/${id}/final`} className={`${travelQuiet} w-full`}>See the picked meeting place</Link>}
       {!ownReady?<Link href={`/travel/${id}/setup`} className={`${travelButton} w-full`}>Finish my setup</Link>:data.organizer?<section className="space-y-3">
-        {locked?<p role="status" className="text-sm text-secondary">The meeting place is confirmed. New searches are locked.</p>:open?<p className="text-sm text-secondary">A destination vote is already open. Continue voting without restarting the search.</p>:!agreed?<p className="text-sm text-secondary">The group must agree to new destinations first. Ask for new options from your saved meeting place.</p>:<>
-          <p className="text-sm text-secondary">{allReady?saved?'The group agreed to new options. Your saved meeting place stays available until a replacement wins.':'Start when you’re ready. Opening this page does not start a paid search.':'Waiting for everyone’s airport and private flight budget.'}</p>
+        {locked?<p role="status" className="text-sm text-secondary">Confirmed. New searches are locked.</p>:open?<p className="text-sm text-secondary">A vote is already open.</p>:!agreed?<p className="text-sm text-secondary">The group must vote for new options first.</p>:<>
+          {!allReady&&<p className="text-sm text-secondary">Waiting for everyone’s setup.</p>}
           <button disabled={busy||pending||!allReady} onClick={start} className={`${travelButton} w-full`}>{busy?'Finding flights…':pending?'Search in progress':comparison?.status==='failed'||comparison?.stalled?'Retry flight search':comparison?'Find new destinations':'Find flights'}</button>
         </>}
-      </section>:<p className="text-sm text-secondary">{pending?'You’ll continue to voting when the organizer’s search is ready.':'Ask the organizer to start or refresh the flight comparison.'}</p>}
-      <button onClick={()=>reload()} className={`${travelQuiet} w-full`}>Check search status</button>
+      </section>:<p className="text-sm text-secondary">Waiting for the organizer’s search.</p>}
     </>}
-    <Link href={`/travel/${id}`} className={`inline-flex min-h-11 items-center text-sm font-bold underline ${travelFocus}`}>Back to trip lobby</Link>
   </TravelFrame>;
 }

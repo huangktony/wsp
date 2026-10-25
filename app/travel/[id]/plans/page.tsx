@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, useApi } from '@/lib/client';
 import { type Vote } from '@/lib/travel/core';
+import { formatTripDates } from '@/lib/travel/format';
 import { TravelFrame, TravelSkeleton, ComparisonCards, DiscoverySummaryNote, FareWarning, travelButton, travelQuiet } from '@/components/TravelUI';
 
 function deadlineLabel(deadline: string | undefined, now: number) {
@@ -50,7 +51,7 @@ export default function TravelPlans({ params }: { params: Promise<{ id: string }
     {!data && !error && <TravelSkeleton />}
     {(error || err) && <p role="alert" className="text-sm font-semibold text-maroon">{err || error}</p>}
     {data && <>
-      <p className="text-[15px] font-semibold text-secondary">{data.name}{data.dates && ` · ${data.dates.depart} → ${data.dates.return}`}</p>
+      <p className="text-[15px] font-semibold text-secondary">{data.name}{data.dates && ` · ${formatTripDates(data.dates.depart, data.dates.return)}`}</p>
       {!ownReady && <Link href={`/travel/${id}/setup`} className={`${travelButton} w-full`}>Finish my setup</Link>}
       <div className="flex flex-wrap gap-2 text-xs font-bold">
         <span className="chip-pink">{open ? deadlineLabel(comparison.deadline, now) : 'Voting closed'}</span>
@@ -58,17 +59,16 @@ export default function TravelPlans({ params }: { params: Promise<{ id: string }
         <span className="chip">{comparison?.confirmed ?? 0} confirmed</span>
       </div>
       {open ? <FareWarning expired={comparison.expired} /> : <section className="space-y-3 rounded-2xl border border-azure p-4">
-        <p role="status" className="text-sm">{comparison?.status === 'final' ? 'Your meeting place is picked. Voting is closed.' : comparison?.status === 'vetoed' ? 'No destination won this round. Find new options together.' : comparison?.status === 'stale' ? 'Trip settings changed. A new comparison is needed.' : comparison?.status === 'generating' ? 'The flight search is still in progress.' : comparison?.error ?? 'No flight comparison is ready yet.'}</p>
+        <p role="status" className="text-sm">{comparison?.status === 'final' ? 'Voting closed. Meeting place picked.' : comparison?.status === 'vetoed' ? 'No destination won. Try new options.' : comparison?.status === 'stale' ? 'Trip changed. A new search is needed.' : comparison?.status === 'generating' ? 'Flight search in progress.' : comparison?.error ?? 'No flight search yet.'}</p>
         <Link href={comparison?.status === 'final' ? `/travel/${id}/final` : `/travel/${id}/finding`} className={travelQuiet}>{comparison?.status === 'final' ? 'See meeting place' : 'See flight search'}</Link>
       </section>}
       <DiscoverySummaryNote summary={comparison?.summary} />
-      {removed.length > 0 && <p role="status" className="text-sm text-secondary">{removed.length} {removed.length === 1 ? 'destination was' : 'destinations were'} removed by a majority veto.</p>}
+      {removed.length > 0 && <p role="status" className="text-sm text-secondary">{removed.length} removed by majority veto.</p>}
       {!!options.length && <ComparisonCards options={options} myVotes={myVotes} voting={open && ownReady && !comparison.myConfirmed} busy={busy} onVote={vote} />}
       {open && ownReady && <>
-        <p className="text-center text-[13px] text-secondary">{comparison.myConfirmed ? 'Your votes are confirmed. Waiting for the group.' : `You’ve voted on ${myVotes.length} of ${options.length} destinations. Confirm when you’re ready; confirmed votes are final.`}</p>
+        <p className="text-center text-[13px] text-secondary">{comparison.myConfirmed ? 'Votes confirmed. Waiting for the group.' : `Voted on ${myVotes.length} of ${options.length} · confirmed votes are final`}</p>
         {!comparison.myConfirmed && <button disabled={busy || myVotes.length !== options.length || !options.length || !comparison.canConfirm} onClick={() => act('/confirm', { comparisonId: comparison.id })} className={`${travelButton} w-full`}>{busy ? 'Saving…' : 'Confirm my votes'}</button>}
       </>}
-      <p className="text-center text-xs text-secondary">Votes are anonymous until the end. Voting closes when everyone confirms, at the deadline, or when the organizer closes it.</p>
       {open && ownReady && data.organizer && <button disabled={busy} onClick={() => act('/close', { comparisonId: comparison.id })} className={`${travelQuiet} w-full`}>Close voting now</button>}
       {data.savedFinal && comparison?.status !== 'final' && <Link href={`/travel/${id}/final`} className="block text-center text-sm font-bold underline">See the saved meeting place</Link>}
     </>}

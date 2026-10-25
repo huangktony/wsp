@@ -19,21 +19,20 @@ export default function TravelDemo() {
   const active = DEMO_MEMBERS.find(m => m.id === state.voter)!;
   const reset = () => { const next = initialDemo(); setState(next); setDraft(next.dates); setError(''); };
   return <TravelFrame title="Different cities. Same weekend." eyebrow="WSP TRAVEL · INTERACTIVE DEMO" demo>
-    <p className="rounded-2xl bg-orchid p-4 text-sm font-semibold text-orchidink">DEMO · Sample round-trip fares and simulated private checks. No login, bank connection, live searches or real votes.</p>
+    <p className="rounded-2xl bg-orchid p-4 text-sm font-semibold text-orchidink">Demo · sample fares and simulated checks. Nothing here is real.</p>
     <TravelArt />
-    <p className="text-sm text-secondary">Steph in El Paso, Tony in Houston, Ravi in Chicago. Choose shared dates; WSP discovers places that fit all three illustrative private flight caps. Then switch travelers to try their ballots.</p>
+    <p className="text-sm text-secondary">Steph in El Paso, Tony in Houston, Ravi in Chicago. Switch travelers to vote as each.</p>
     <form className="space-y-3" onSubmit={e => { e.preventDefault(); try { const dates = validateDates(draft); setState({ ...state,dates,ballots:[],confirmed:[],status:'voting',winnerId:null }); setError(''); } catch (e: any) { setError(e.message); } }}>
-      <details className="rounded-2xl border border-azure p-4"><summary className="cursor-pointer font-bold">Edit shared sample dates</summary><div className="mt-4"><DatesEditor value={draft} onChange={setDraft} /></div><p className="mt-3 text-xs text-secondary">Sample fares are fixed illustrations, not prices for the dates you choose.</p><button className={`${travelButton} mt-3`}>Discover sample destinations</button></details>
+      <details className="rounded-2xl border border-azure p-4"><summary className="cursor-pointer font-bold">Edit shared sample dates</summary><div className="mt-4"><DatesEditor value={draft} onChange={setDraft} /></div><button className={`${travelButton} mt-3`}>Discover sample destinations</button></details>
     </form>
     {error && <p role="alert" className="text-sm text-maroon">{error}</p>}
     <label className="block text-sm font-bold">DEMO · Simulate traveler<select value={state.voter} onChange={e => setState({ ...state,voter:Number(e.target.value) })} className={`${travelInput} mt-2`}>{DEMO_MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name} · {m.airport}</option>)}</select></label>
-    <div aria-live="polite" className="rounded-2xl bg-pistachio p-4 text-sm"><p className="font-bold">{state.status === 'final' ? `Meet in ${airportName(options.find(o => o.id === state.winnerId)!.airport)}!` : state.status === 'vetoed' ? 'Every option was vetoed. Try different shared dates.' : `${active.name}’s sample ballot`}</p><p className="mt-1 text-secondary">{state.status === 'voting' ? `${progress.confirmed} of 3 confirmed. Vote on every remaining destination, then confirm each traveler’s ballot.` : 'Voting is closed. Reset or discover new sample options to try again.'}</p></div>
+    <div aria-live="polite" className="rounded-2xl bg-pistachio p-4 text-sm"><p className="font-bold">{state.status === 'final' ? `Meet in ${airportName(options.find(o => o.id === state.winnerId)!.airport)}!` : state.status === 'vetoed' ? 'Every option was vetoed. Try different shared dates.' : `${active.name}’s sample ballot`}</p><p className="mt-1 text-secondary">{state.status === 'voting' ? `${progress.confirmed} of 3 confirmed.` : 'Voting closed.'}</p></div>
     <DiscoverySummaryNote summary={summary} demo/>
     <ComparisonCards options={visibleOptions} myVotes={state.ballots.filter(b => b.userId === state.voter)} voting={state.status === 'voting'&&!progress.myConfirmed} winnerId={state.winnerId} demo onVote={(id,value) => setState(s => demoVote(s,id,value))} />
     {state.status==='voting'&&<>
-      {progress.removedOptionIds.length>0&&<p role="status" className="text-sm text-secondary">{progress.removedOptionIds.length} destination removed by a majority veto.</p>}
+      {progress.removedOptionIds.length>0&&<p role="status" className="text-sm text-secondary">{progress.removedOptionIds.length} removed by majority veto.</p>}
       <button type="button" disabled={!progress.canConfirm} className={`${travelButton} w-full`} onClick={()=>setState(s=>demoConfirm(s))}>{progress.myConfirmed?'Votes confirmed':'Confirm my votes'}</button>
-      <p className="text-xs text-secondary">Confirmed votes are locked, just like Hangout. Switch travelers to finish the group’s decision.</p>
     </>}
     <button type="button" className={`${travelQuiet} w-full`} onClick={reset}>Reset demo</button>
     <TravelNotice /><Link href="/travel" className={`${travelButton} w-full`}>Plan a real trip</Link>

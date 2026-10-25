@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/client';
 import { defaultDates, validateDates } from '@/lib/travel/discovery';
 import { travelEntry } from '@/lib/travel/flow';
-import { TravelFrame, DatesEditor, travelButton, travelInput, travelQuiet, travelFocus, TravelNotice } from '@/components/TravelUI';
+import { TravelFrame, DatesEditor, travelButton, travelInput, travelQuiet, travelFocus } from '@/components/TravelUI';
 export default function CreateTrip() {
   const [name,setName] = useState(''), [dates,setDates] = useState(defaultDates), [code,setCode] = useState('');
   const [createError,setCreateError] = useState(''), [joinError,setJoinError] = useState('');
@@ -21,8 +21,7 @@ export default function CreateTrip() {
     catch(e:any) { setError(e.message); }
     finally { inFlight.current=false;setAction(null); }
   };
-  return <TravelFrame title="Create or join a trip.">
-    <Link href="/travel" className={`inline-flex min-h-11 items-center text-sm font-bold underline ${travelFocus}`}>← Back to trips</Link>
+  return <TravelFrame title="Create or join a trip." back="/travel">
     <section aria-labelledby="join-trip-heading" className="rounded-2xl bg-pistachio p-4">
       <h2 id="join-trip-heading" className="mb-3 font-[inherit] text-lg font-extrabold">Have an invite?</h2>
       <form aria-label="Join trip" className="space-y-3" onSubmit={e=>{e.preventDefault();return run('join',()=>api('/api/travel/join','POST',{code}));}}>
@@ -35,7 +34,7 @@ export default function CreateTrip() {
       <h2 id="create-trip-heading" className="mb-4 font-[inherit] text-xl font-extrabold">Or make a meeting place.</h2>
       <form aria-label="Create trip" className="space-y-5" onSubmit={e=>{e.preventDefault();return run('create',async()=>{const sharedDates=validateDates(dates);return api('/api/travel','POST',{name,dates:sharedDates});});}}>
         <label className="block text-sm font-bold">Trip name<input required maxLength={60} value={name} onChange={e=>setName(e.target.value)} placeholder="The long-overdue reunion" aria-describedby={createError?'create-trip-error':undefined} className={`${travelInput} mt-1`} /></label>
-        <DatesEditor value={dates} onChange={setDates} /><TravelNotice />
+        <DatesEditor value={dates} onChange={setDates} />
         {createError&&<p id="create-trip-error" role="alert" className="text-sm text-maroon">{createError}</p>}
         <button disabled={!name.trim()||action!==null} aria-busy={action==='create'} className={`${travelButton} w-full`}>{action==='create'?'Creating…':'Create trip & invite friends'}</button>
       </form>

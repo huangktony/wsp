@@ -31,6 +31,8 @@ test("votes from people who left the group do not count, and nobody counts twice
 test("a redraw is blocked unless the round is final, and blocked after the requests were sent", () => {
   assert.equal(redrawGate({ status: "final", requests_sent: false }), "ok");
   assert.equal(redrawGate({ status: "final", requests_sent: true }), "locked");
+  assert.equal(redrawGate({ status: "final", requests_sent: false, confirmed_at: "2026-10-25T12:00:00Z" }), "confirmed");
+  assert.equal(redrawGate({ status: "final", requests_sent: false, confirmed_at: null }), "ok");
   for (const status of ["voting", "generating", "vetoed", "failed", "redrawn"]) assert.equal(redrawGate({ status, requests_sent: false }), "not_final", status);
   assert.equal(redrawGate(null), "not_final");
   assert.equal(redrawGate(undefined), "not_final");
@@ -39,4 +41,5 @@ test("a redraw is blocked unless the round is final, and blocked after the reque
 test("the messages the server and screen show", () => {
   assert.equal(REDRAW_MESSAGES.locked, "Plan locked: payment requests were sent.");
   assert.match(REDRAW_MESSAGES.not_final, /no final plan/);
+  assert.equal(REDRAW_MESSAGES.confirmed, "Plan locked: it was confirmed as final.");
 });

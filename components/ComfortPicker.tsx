@@ -1,10 +1,15 @@
 "use client";
 import { useRef } from "react";
 import { comfortCaption, effectiveTier } from "@/lib/comfort";
-import type { Tier } from "@/lib/tiers";
+import { TIER_CUTOFFS, type Tier } from "@/lib/tiers";
 
 const TIERS: Tier[] = ["$", "$$", "$$$"];
 const NAME: Record<Tier, string> = { $: "lowest budget", $$: "medium budget", $$$: "highest budget" };
+const RANGE: Record<Tier, string> = {
+  $: `Up to $${TIER_CUTOFFS[0]}`,
+  $$: `Over $${TIER_CUTOFFS[0]} through $${TIER_CUTOFFS[1]}`,
+  $$$: `Over $${TIER_CUTOFFS[1]}`,
+};
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo";
 
 // Semicircle geometry: three 60 degree arcs from the left (180) over the top to the right (0), with small gaps.
@@ -49,20 +54,24 @@ export function ComfortPicker({ suggested, avg, picked, onPick }: { suggested: T
             ))}
           </svg>
           <div className="pointer-events-none absolute inset-x-0 bottom-3 text-center">
-            <p className="text-[44px] font-extrabold leading-none tracking-[-1.5px]">{current ?? "–"}</p>
+            <p className="text-[36px] font-extrabold leading-none tracking-[-1.5px]">{current ?? "–"}</p>
             <p className="mt-1 text-sm font-semibold text-secondary">{current ? "your comfort level" : "pick a level"}</p>
           </div>
         </div>
-        <div className="mt-1 grid grid-cols-3 items-center">
+        <div className="mt-1 grid grid-cols-3 items-stretch gap-1">
           {TIERS.map((t, i) => (
             <button
               key={t} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" aria-checked={t === current}
-              aria-label={`${t}, ${NAME[t]}`} tabIndex={i === tabbable ? 0 : -1} onClick={() => choose(t)} onKeyDown={(e) => onKey(e, i)}
-              className={`flex min-h-11 min-w-11 items-center justify-center rounded-full px-3 text-lg font-extrabold ${focus} ${i === 0 ? "justify-self-start" : i === 2 ? "justify-self-end" : "justify-self-center"} ${t === current ? "bg-indigo text-surface" : "text-indigo"}`}
-            >{t}</button>
+              aria-label={`${t}, ${NAME[t]}, ${RANGE[t]} per person per stop`} tabIndex={i === tabbable ? 0 : -1} onClick={() => choose(t)} onKeyDown={(e) => onKey(e, i)}
+              className={`flex min-h-11 min-w-0 flex-col items-center justify-start gap-1 rounded-2xl px-1 py-2 text-lg font-extrabold ${focus} ${t === current ? "bg-indigo text-surface" : "text-indigo"}`}
+            >
+              <span>{t}</span>
+              <span className="text-xs font-semibold leading-4">{RANGE[t]}</span>
+            </button>
           ))}
         </div>
       </div>
+      <p className="mt-3 text-xs text-secondary">Spending guidance per person, per stop. Prices are estimates; a plan with multiple stops can cost more.</p>
       <p className="mt-3 text-sm text-indigo" aria-live="polite">
         {cap.bold ? <>{cap.text.split(cap.bold)[0]}<b>{cap.bold}</b>{cap.text.split(cap.bold)[1]}</> : cap.text}
       </p>

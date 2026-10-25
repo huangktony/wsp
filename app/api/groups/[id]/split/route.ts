@@ -2,12 +2,13 @@ import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 import { computeSplit } from "@/lib/pipeline";
 import { maskKey, recordHangout } from "@/lib/nessie";
+import { votingSchemaReady } from "@/lib/voting";
 
 /**
  * Screen 10 split actions on the winning plan. Body is one of:
  *   { action: "mode", mode: "even" | "items" }   payer only
  *   { action: "skip", stop: number, skip: bool }  any member, for themselves
- *   { action: "send" }                            payer only: creates the payment requests
+ *   { action: "send" }                            payer only, after the plan is confirmed: creates the payment requests
  * Nothing can change after requests are sent.
  */
 export async function POST(
@@ -21,7 +22,7 @@ export async function POST(
   if (!(await isMember(id, uid))) return fail("not in this group", 403);
 
   const round = await q1<any>(
-    "select r.id,r.status,r.payer_id,r.requests_sent,jsonb_array_length(p.stops) n from plan_rounds r join plans p on p.id=r.winner_plan_id where r.group_id=$1 and r.status='final' order by r.id desc limit 1",
+    "select r.id,r.status,r.payer_id,r.requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at,jsonb_array_length(p.stops) n from plan_rounds r join plans p on p.id=r.winner_plan_id where r.group_id=$1 and r.status='final' order by r.id desc limit 1",
     [id],
   );
   if (!round) return fail("no final plan yet", 409);
@@ -62,6 +63,9 @@ export async function POST(
   } else if (body.action === "send") {
     if (!isPayer) {
       return fail("only the person paying up front sends requests", 403);
+    }
+    if (!round.confirmed_at && (await votingSchemaReady())) {
+      return fail("confirm the final plan before sending requests", 409);
     }
 
     // Claim the round FIRST. A group redraw flips the same row with a

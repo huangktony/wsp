@@ -5,6 +5,7 @@ import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 import { groupTier } from "@/lib/tier";
 import { deleteGroup } from "@/lib/groups";
+import { settleRound } from "@/lib/pipeline";
 import { redrawStatus } from "@/lib/redraw";
 import { duesInGroup } from "@/lib/payments";
 
@@ -32,14 +33,14 @@ export async function GET(
   );
 
   const round = await q1<any>(
-    "select id,status,to_jsonb(r)->'search_settings' search_settings from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1",
+    "select id,status,to_jsonb(r)->'search_settings' search_settings from plan_rounds r where group_id=$1 order by (status='final') desc,id desc limit 1",
     [id],
   );
 
-  const { votedMemberIds, ...participation } = await getVotingParticipation(
-    id,
-    round,
-  );
+  if (round?.status === "voting") round.status = await settleRound(round.id);
+
+  const { votedMemberIds, confirmedMemberIds, ...participation } =
+    await getVotingParticipation(id, round);
 
   return json({
     ...g,

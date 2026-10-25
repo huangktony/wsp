@@ -49,7 +49,7 @@ export async function confirmedMemberIds(roundId: number | null): Promise<number
   if (roundId == null || !(await votingSchemaReady())) return [];
   const rows = await q<{ user_id: number }>(
     `select c.user_id from vote_confirmations c join plan_rounds r on r.id=c.round_id
-     join memberships m on m.user_id=c.user_id and m.group_id=r.group_id where c.round_id=$1`, [roundId]);
+     join memberships m on m.user_id=c.user_id and m.group_id=r.group_id where c.round_id=$1 and ${includedVoteSql("r", "m.user_id")}`, [roundId]);
   return rows.map((row) => row.user_id);
 }
 

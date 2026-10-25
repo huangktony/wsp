@@ -2,7 +2,7 @@
 // Runs geocoding and the real place search (4 SerpApi credits) and plan generation for a group of that tier, then prints every stop with its
 // Google Maps type, estimated price and cost. Never prints keys.
 import { categoriesFor, findPlaces, type Place } from "../lib/serpapi";
-import { generatePlans } from "../lib/gemini";
+import { generatePlans } from "../lib/meta";
 import { planLevel } from "../lib/price";
 import type { Tier } from "../lib/tiers";
 

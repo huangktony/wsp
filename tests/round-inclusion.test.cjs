@@ -10,6 +10,8 @@ function load(file, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText, { exports, process: { env: {} }, require(name) {
     if (name in mocks) return mocks[name];
+    if (name === './voting') return {};
+    if (name === './votingRules' || name === '@/lib/votingRules') return load('lib/votingRules.ts');
     throw Error(`Unexpected import ${name}`);
   } });
   return exports;
@@ -69,7 +71,7 @@ test('legacy snapshots and missing columns count everyone included', () => {
 test('participation ignores excluded votes even if they exist in storage', async () => {
   const voting = load('lib/voting.ts', {
     './roundParticipation': inclusion,
-    '@/lib/db': { q: async () => [{ user_id: 1, has_voted: true }, { user_id: 2, has_voted: true }, { user_id: 3, has_voted: false }] },
+    '@/lib/db': { q1: async () => ({ ok: false }), q: async () => [{ user_id: 1, has_voted: true }, { user_id: 2, has_voted: true }, { user_id: 3, has_voted: false }] },
   });
   const result = await voting.getVotingParticipation(5, { ...round, id: 10 });
   assert.equal(result.voted, 1);
@@ -84,6 +86,7 @@ test('vote API refuses excluded and unfinished members before storing or settlin
     '@/lib/api': { requireUser: async () => user, isMember: async () => true, setupDone: async () => setup, fail: (error, status) => ({ error, status }), json: value => value },
     '@/lib/db': { q1: async () => ({ ...round, round_id: 10, group_id: 5 }), q: async () => { writes++; } },
     '@/lib/pipeline': { settleRound: async () => { settles++; return 'voting'; } },
+    '@/lib/voting': { confirmedMemberIds: async () => [], planTallies: async () => [], votingSchemaReady: async () => false },
   });
   const vote = () => POST({ json: async () => ({ value: 'approve' }) }, { params: Promise.resolve({ id: '101' }) });
   assert.equal((await vote()).error, 'Make your setup to vote');
@@ -118,7 +121,7 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
   const pipeline = load('lib/pipeline.ts', {
     './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
     './db': { pool: { connect: async () => ({ query, release() {} }) } },
-    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
+    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './split': {},
   });
   await pipeline.startRound(5);
   assert.equal(inserts[0].length, 3);
@@ -130,30 +133,36 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
   assert.equal(queries.some(sql => sql.includes('insert into votes')), false);
 });
 
-test('winner tallies and automatic closing apply the same inclusion predicate', async () => {
+test('winner tallies and confirmation-based closing apply the same inclusion predicate', async () => {
   const sqlSeen = [];
-  const pipeline = load('lib/pipeline.ts', {
-    './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
-    './db': {
-      q1: async sql => {
-        sqlSeen.push(sql);
-        if (sql.startsWith('select status')) return { status: 'final' };
-        // One included voter, one plan, one vote: excluded members must not keep it open.
-        assert.ok(sql.includes(inclusion.includedVoteSql()), 'member and ballot totals must be restricted');
-        assert.equal(sql.split(inclusion.includedVoteSql()).length - 1, 2);
-        return { id: 10, status: 'voting', group_id: 5, expired: false, plans: 1, members: 1, votes: 1 };
-      },
-      q: async sql => {
-        sqlSeen.push(sql);
-        if (sql.includes('left join votes')) {
-          assert.ok(sql.includes(inclusion.includedVoteSql('r', 'v.user_id')));
-          return [{ id: 101, cost: 10, approves: 1, vetoes: 0 }];
-        }
-        return [];
-      },
+  const db = {
+    q1: async sql => {
+      sqlSeen.push(sql);
+      if (sql.startsWith('select status')) return { status: 'final' };
+      if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
+      assert.ok(sql.includes(inclusion.includedVoteSql()), 'member total must be restricted');
+      return { id: 10, status: 'voting', group_id: 5, expired: false, members: 1 };
     },
-    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
+    q: async sql => {
+      sqlSeen.push(sql);
+      if (sql.includes('left join votes')) {
+        assert.ok(sql.includes(inclusion.includedVoteSql('r', 'v.user_id')));
+        assert.match(sql, /left join memberships m/);
+        return [{ id: 101, cost: 10, approves: 1, vetoes: 0 }];
+      }
+      if (sql.includes('from vote_confirmations')) {
+        assert.ok(sql.includes(inclusion.includedVoteSql('r', 'm.user_id')), 'excluded confirmations must not close voting early');
+        return [{ user_id: 1 }];
+      }
+      return [];
+    },
+  };
+  const voting = load('lib/voting.ts', { './roundParticipation': inclusion, '@/lib/db': db });
+  const pipeline = load('lib/pipeline.ts', {
+    './voting': voting,
+    './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
+    './db': db, './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './split': {},
   });
   assert.equal(await pipeline.settleRound(10), 'final');
-  assert.ok(sqlSeen.some(sql => sql.includes("status='final'")));
+  assert.ok(sqlSeen.some(sql => sql.startsWith("update plan_rounds set status='final'")));
 });

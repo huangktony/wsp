@@ -16,8 +16,9 @@ const inter = Inter({
   weight: ["400", "600", "700", "800"],
 });
 
-// Screen 9: Plans and voting. Approve or veto each plan.
-// Votes are anonymous until voting closes.
+// Screen 9: Plans and voting. Approve or veto each plan, then confirm.
+// Votes are anonymous until voting closes, and final once confirmed.
+// A plan a majority vetoed is removed from the list.
 type Vote = "approve" | "veto" | null;
 
 function left(ms: number) {
@@ -68,6 +69,7 @@ export default function Plans({
   const savingRef = useRef(new Set<number>());
   const [saving, setSaving] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [confirming, setConfirming] = useState(false);
 
   // Stop overriding a vote once a fresh server response confirms it. Keep an
   // in-flight mutation's override even if an older poll arrives meanwhile.
@@ -160,17 +162,14 @@ export default function Plans({
     );
   }
 
+  const locked = !!data.myConfirmed;
+  const canVote = status === "voting" && !!data.inclusion?.canVote;
+
   const voteOf = (p: any): Vote =>
     p.id in mine ? mine[p.id] : p.my_vote ?? null;
 
   const vote = (p: any, v: Exclude<Vote, null>) => {
-    if (
-      status !== "voting" ||
-      !data.inclusion?.canVote ||
-      savingRef.current.has(p.id)
-    ) {
-      return;
-    }
+    if (!canVote || locked || savingRef.current.has(p.id)) return;
 
     const next = voteOf(p) === v ? null : v; // tap again to undo
     savingRef.current.add(p.id);
@@ -198,6 +197,18 @@ export default function Plans({
       .then(reload)
       .catch((e) => setErr(e.message));
 
+  const confirm = () => {
+    setConfirming(true);
+    setErr("");
+    api(`/api/groups/${id}/ballot`, "POST")
+      .then(reload)
+      .catch((e) => setErr(e.message))
+      .finally(() => setConfirming(false));
+  };
+
+  const open = data.plans.filter((p: any) => !p.removed);
+  const removed = data.plans.length - open.length;
+  const openCount = open.filter((p: any) => voteOf(p)).length;
   const myCount = data.plans.filter((p: any) => voteOf(p)).length;
   const serverHasMyVote = data.plans.some((p: any) => p.my_vote != null);
   const voted = Math.max(
@@ -206,6 +217,9 @@ export default function Plans({
       data.memberCount,
       data.voted - Number(serverHasMyVote) + Number(myCount > 0),
     ),
+  );
+  const mySetupDone = data.members.some(
+    (m: any) => m.id === data.me && m.setup_done,
   );
 
   return (
@@ -224,7 +238,7 @@ export default function Plans({
           {data.round.attempt > 1 && ` · Round ${data.round.attempt}`}
         </p>
         <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">
-          {data.plans.length} {data.plans.length === 1 ? "plan" : "plans"} for{" "}
+          {open.length} {open.length === 1 ? "plan" : "plans"} for{" "}
           {data.round.slot}
         </h1>
         <div className="mb-5 flex flex-wrap gap-2 [&>span]:text-xs [&_span]:font-bold">
@@ -234,6 +248,9 @@ export default function Plans({
           <span className="chip" aria-live="polite">
             {voted} of {data.memberCount} have voted
           </span>
+          {data.confirmed > 0 && (
+            <span className="chip">{data.confirmed} confirmed</span>
+          )}
           <TierBadge tier={data.round.group_tier} label="Group budget" />
         </div>
 
@@ -241,9 +258,7 @@ export default function Plans({
         <RerunPlans
           id={id}
           inclusion={data.inclusion}
-          setupComplete={data.members.some(
-            (m: any) => m.id === data.me && m.setup_done,
-          )}
+          setupComplete={mySetupDone}
         />
         {!data.inclusion?.canVote && (
           <p className="my-3 text-sm text-secondary">
@@ -253,15 +268,22 @@ export default function Plans({
             >
               Make your setup to vote
             </Link>
-            {data.members.some(
-              (m: any) => m.id === data.me && m.setup_done,
-            ) && " · Re-run plans to include your setup in this round."}
+            {mySetupDone &&
+              " · Re-run plans to include your setup in this round."}
+          </p>
+        )}
+
+        {removed > 0 && (
+          <p role="status" className="mb-4 text-sm text-secondary">
+            {removed} {removed === 1 ? "plan was" : "plans were"} removed
+            because a majority vetoed {removed === 1 ? "it" : "them"}.
           </p>
         )}
 
         <div className="space-y-4">
-          {data.plans.map((p: any) => {
+          {open.map((p: any) => {
             const v = voteOf(p);
+            const disabled = !canVote || locked || saving.includes(p.id);
             return (
               <article
                 key={p.id}
@@ -298,11 +320,7 @@ export default function Plans({
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
-                    disabled={
-                      status !== "voting" ||
-                      !data.inclusion?.canVote ||
-                      saving.includes(p.id)
-                    }
+                    disabled={disabled}
                     aria-pressed={v === "approve"}
                     onClick={() => vote(p, "approve")}
                     className={`h-12 rounded-2xl disabled:opacity-50 text-[15px] font-bold ${
@@ -314,11 +332,7 @@ export default function Plans({
                     ✓ Approve
                   </button>
                   <button
-                    disabled={
-                      status !== "voting" ||
-                      !data.inclusion?.canVote ||
-                      saving.includes(p.id)
-                    }
+                    disabled={disabled}
                     aria-pressed={v === "veto"}
                     onClick={() => vote(p, "veto")}
                     className={`h-12 rounded-2xl disabled:opacity-50 text-[15px] font-bold ${
@@ -336,12 +350,34 @@ export default function Plans({
         </div>
 
         <Err msg={err || error} />
-        <p className="mt-5 text-center text-[13px] text-secondary">
-          {myCount < data.plans.length
-            ? `You've voted on ${myCount} of ${data.plans.length} plans. `
-            : "You're done. "}
+        {locked ? (
+          <p
+            role="status"
+            className="mt-5 rounded-2xl bg-sage p-3 text-center text-sm font-semibold text-sageink"
+          >
+            ✓ Your votes are confirmed. Waiting for the others.
+          </p>
+        ) : (
+          canVote && (
+            <button
+              className="btn mt-5 text-[17px] font-bold"
+              disabled={
+                confirming || saving.length > 0 || openCount < open.length
+              }
+              onClick={confirm}
+            >
+              {confirming ? "Confirming…" : "Confirm my votes"}
+            </button>
+          )
+        )}
+        <p className="mt-3 text-center text-[13px] text-secondary">
+          {locked || !canVote
+            ? ""
+            : openCount < open.length
+              ? `You've voted on ${openCount} of ${open.length} plans. `
+              : "Votes are final once you confirm. "}
           Votes are anonymous until the end. Voting closes at the deadline or
-          once everyone has voted on every plan.
+          once everyone has confirmed their votes.
         </p>
         {status === "voting" &&
           data.isCreator &&

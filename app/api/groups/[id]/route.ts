@@ -39,10 +39,8 @@ export async function GET(
 
   if (round?.status === "voting") round.status = await settleRound(round.id);
 
-  const { votedMemberIds, ...participation } = await getVotingParticipation(
-    id,
-    round,
-  );
+  const { votedMemberIds, confirmedMemberIds, ...participation } =
+    await getVotingParticipation(id, round);
 
   return json({
     ...g,

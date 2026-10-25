@@ -132,11 +132,14 @@ Search the code for these tags:
 Owned by person 4. Files: `app/groups/[id]/finding`, `plans`, `final`, `app/api/groups/[id]/plans|final|split`, `app/api/plans/[id]/vote`, `app/api/payments`, `lib/pipeline.ts`, `lib/slot.ts`.
 
 - **Finding plans** picks the slot most members share, uses the group's lowest budget level, searches places and writes 3 plans. If two people open it at once they share one search.
-- **Voting**: approve or veto each plan (tap again to undo). Tallies stay hidden until voting closes. Voting closes at the deadline (`groups.vote_hours`, default 24) or once everyone has voted on every plan. The creator can also tap **Close voting now**.
-- **Winner** = most approvals, then fewest vetoes, then cheapest. If every plan was vetoed and none approved, the app makes new plans that leave out those places, and the deadline resets.
+- **Voting**: approve or veto each plan (tap again to undo), then tap **Confirm my votes**. Confirming needs a vote on every plan still in the running, and confirmed votes can't change. A plan vetoed by more than half of the current members is removed: it drops off the list and can't win. Tallies stay hidden until voting closes. Voting closes at the deadline (`groups.vote_hours`, default 24), once everyone has confirmed, or when every plan was removed. The creator can also tap **Close voting now**.
+- **Winner** = most approvals, then fewest vetoes, then cheapest, counting only current members' votes. A plan needs at least one approval to win. If no plan won, the app makes new plans that leave out the vetoed places, and the deadline resets. The final screen shows every plan's approve/veto counts under **How the group voted**.
+- **Confirm final plan**: the creator confirms the winner, which saves it as final (`plan_rounds.confirmed_at`, `confirmed_by`). After that the group can't redraw it, and payment requests can be sent.
 - **Split**: the creator pays up front and picks **Split evenly** or **By item**. Anyone can tick stops they'll skip. Sending requests locks the split. Paying back uses a Nessie transfer when both accounts are real.
 
-Round status values (`plan_rounds.status`): `generating`, `voting`, `vetoed`, `final`, `failed`. Group screens can use these for the card status.
+Round status values (`plan_rounds.status`): `generating`, `voting`, `vetoed`, `final`, `redrawn`, `failed`. A final round is confirmed when `confirmed_at` is set. Group screens can use these for the card status.
+
+Vote confirmation needs `db/migrations/20261025_vote_confirmations.sql` (additive: a `vote_confirmations` table and two `plan_rounds` columns). Apply it through the same review process as the other migrations. Until then the screens still load, but confirming returns 503 and voting only closes at the deadline or via **Close voting now**.
 
 For person 2: the create-group voting deadline (6/12/24/48h) should be saved to `groups.vote_hours`.
 

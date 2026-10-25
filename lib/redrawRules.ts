@@ -8,15 +8,17 @@ export const shouldRedraw = (votes: number, members: number) => votes >= redrawT
 /** Votes from people who are no longer in the group do not count. Each person counts once. */
 export const currentVotes = (voterIds: number[], memberIds: number[]) => new Set(voterIds.filter((v) => memberIds.includes(v))).size;
 
-export type RedrawGate = "ok" | "not_final" | "locked";
+export type RedrawGate = "ok" | "not_final" | "confirmed" | "locked";
 
-/** A redraw is only possible on a FINAL round whose payment requests have not been sent. */
-export function redrawGate(round: { status: string; requests_sent: boolean } | null | undefined): RedrawGate {
+/** A redraw is only possible on a FINAL round that is not confirmed yet and whose payment requests have not been sent. */
+export function redrawGate(round: { status: string; requests_sent: boolean; confirmed_at?: string | null } | null | undefined): RedrawGate {
   if (!round || round.status !== "final") return "not_final";
-  return round.requests_sent ? "locked" : "ok";
+  if (round.requests_sent) return "locked";
+  return round.confirmed_at ? "confirmed" : "ok";
 }
 
 export const REDRAW_MESSAGES: Record<Exclude<RedrawGate, "ok">, string> = {
   not_final: "There is no final plan to redraw.",
+  confirmed: "Plan locked: it was confirmed as final.",
   locked: "Plan locked: payment requests were sent.",
 };

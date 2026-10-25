@@ -128,9 +128,12 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       : pending.length === 2
         ? `${memberName(pending[0])} and ${pending[1].id === g.me ? "you" : pending[1].name} have`
         : `${pending.length} members have`;
+    const unconfirmed = (g.memberCount ?? 0) - (g.confirmed ?? 0);
     helper = pending.length
-      ? `${missing} not voted yet. Voting closes at the deadline or once everyone has voted on every plan.`
-      : "Everyone has voted.";
+      ? `${missing} not voted yet. Voting closes at the deadline or once everyone has confirmed their votes.`
+      : unconfirmed > 0
+        ? `Everyone has voted. Waiting for ${unconfirmed} to confirm.`
+        : "Everyone has voted.";
   }
 
   return (

@@ -13,8 +13,10 @@ import { splitAmounts, type SplitMode } from "@/lib/split";
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const typography = `${inter.className} [&>main>a:first-child]:text-[15px] [&>main>a:first-child]:text-secondary`;
 
-// Screen 10: Final plan and split. Itinerary -> split (even / by item) -> payment requests -> hangout confirmed.
+// Screen 10: Final plan and split. Itinerary -> voting results -> creator confirms the plan -> split (even / by item)
+// -> payment requests -> hangout confirmed.
 const money = (n: number | null | undefined) => `$${(Number(n) || 0).toFixed(2)}`;
+const when = (t: string) => new Date(t).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function downloadIcs(title: string, slot: string, from: string, stops: any[]) {
   const { start, end } = slotDate(slot, from);
@@ -69,6 +71,11 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const others = split.rows.filter((x: any) => x.user_id !== split.payerId && x.amount > 0);
   const going = split.rows.filter((x: any) => x.going).length;
   const sent = round.requests_sent;
+  const confirmed = !!round.confirmed_at;
+  const confirmPlan = () => {
+    setBusy(true); setErr("");
+    api(`/api/groups/${id}/confirm`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false));
+  };
   const myPayment = payments.find((p: any) => p.user_id === data.me);
   const paid = payments.filter((p: any) => p.status === "paid");
   const unpaid = payments.filter((p: any) => p.status === "owed");
@@ -87,7 +94,10 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           <p className="text-muted">Everyone has the plan and their payment request.</p>
         </div>
       ) : (
-        <div><span className="chip text-[13px] font-bold">Winner · {plan.approve} of {data.memberCount} approved</span></div>
+        <div className="flex flex-wrap gap-2">
+          <span className="chip text-[13px] font-bold">Winner · {plan.approve} of {data.memberCount} approved</span>
+          {confirmed && <span className="chip text-[13px] font-bold">✓ Confirmed final · {when(round.confirmed_at)}</span>}
+        </div>
       )}
 
       <h2 className={`${sent ? "" : "mt-2"} font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo`}>{plan.title}</h2>
@@ -122,6 +132,23 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         <button className="btn-ghost" onClick={() => downloadIcs(plan.title, round.slot, round.created_at, plan.stops)}>Add to calendar</button>
         <a className="btn-ghost" href={maps} target="_blank" rel="noreferrer">Get directions</a>
       </div>
+
+      {/* Voting results: the current members' votes the winner was picked from. */}
+      <details className="card mb-6">
+        <summary className="cursor-pointer text-[15px] font-bold">How the group voted</summary>
+        <ul className="mt-3 divide-y divide-line">
+          {data.plans.map((p: any) => (
+            <li key={p.id} className="flex items-center gap-3 py-2">
+              <span className="flex-1">
+                <span className={`block text-[15px] ${p.id === plan.id ? "font-bold" : ""}`}>{p.title}</span>
+                {(p.id === plan.id || p.removed) && <span className="block text-xs text-muted">{p.id === plan.id ? "Winner" : "Removed by a majority veto"}</span>}
+              </span>
+              <span className="text-sm font-semibold tabular-nums text-sageink" aria-label={`${p.approve} approved`}>✓ {p.approve}</span>
+              <span className="text-sm font-semibold tabular-nums text-secondary" aria-label={`${p.veto} vetoed`}>✕ {p.veto}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
 
       {/* Split */}
       <section className="rounded-card bg-panel p-5 text-white">
@@ -165,12 +192,16 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
 
       <Err msg={err} />
       <div className="mt-5 space-y-3">
-        {!sent && data.isPayer && (
+        {!sent && !confirmed && data.isCreator && (
+          <button className="btn text-[17px] font-bold" disabled={busy} onClick={confirmPlan}>Confirm final plan</button>
+        )}
+        {!sent && !confirmed && !data.isCreator && <p className="text-center text-sm text-muted">Waiting for {payer?.name ?? "the organizer"} to confirm the plan.</p>}
+        {!sent && confirmed && data.isPayer && (
           <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" }, null)}>
             Send {others.length} {others.length === 1 ? "request" : "requests"} via Nessie
           </button>
         )}
-        {!sent && !data.isPayer && <p className="text-center text-sm text-muted">Waiting for {payer?.name ?? "the organizer"} to send payment requests. You can still mark stops you'll skip.</p>}
+        {!sent && confirmed && !data.isPayer && <p className="text-center text-sm text-muted">Waiting for {payer?.name ?? "the organizer"} to send payment requests. You can still mark stops you'll skip.</p>}
         {sent && (
           <p className="text-center text-sm font-semibold">Paid back {paid.length} of {payments.length}{pending > 0 && ` · ${money(pending)} pending`}</p>
         )}

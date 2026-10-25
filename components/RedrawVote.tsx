@@ -4,17 +4,17 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { REDRAW_MESSAGES } from "@/lib/redrawRules";
 
-export type Redraw = { locked: boolean; votes: number; members: number; needed: number; mine: boolean };
+export type Redraw = { locked: false | "confirmed" | "locked"; votes: number; members: number; needed: number; mine: boolean };
 
 /**
  * Ask the group for new plans after a plan is final. Tap to add your vote, tap again to take it back. Shows a count only, never
- * names. Once the payment requests are sent the plan is locked. The server enforces all of it; this only shows the state.
+ * names. Once the plan is confirmed or the payment requests are sent, it is locked. The server enforces all of it; this only shows the state.
  */
 export function RedrawVote({ id, redraw, onChanged }: { id: string; redraw: Redraw | null | undefined; onChanged: () => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false), [err, setErr] = useState("");
   if (!redraw) return null;
-  if (redraw.locked) return <p className="text-center text-[13px] leading-[1.4] text-secondary">{REDRAW_MESSAGES.locked}</p>;
+  if (redraw.locked) return <p className="text-center text-[13px] leading-[1.4] text-secondary">{REDRAW_MESSAGES[redraw.locked]}</p>;
 
   const tap = async () => {
     setBusy(true);

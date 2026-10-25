@@ -26,8 +26,9 @@ export class RedrawError extends Error {
   }
 }
 
+/** `locked` is why a redraw is no longer possible, or false. */
 export type RedrawStatus = {
-  locked: boolean;
+  locked: false | "confirmed" | "locked";
   votes: number;
   members: number;
   needed: number;
@@ -40,7 +41,7 @@ export async function redrawStatus(
   userId: number,
 ): Promise<RedrawStatus | null> {
   const r = await q1<any>(
-    `select r.id,r.status,r.requests_sent,
+    `select r.id,r.status,r.requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at,
        (select count(*)::int from memberships where group_id=r.group_id) members,
        (select count(*)::int from redraw_votes v join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where v.round_id=r.id) votes,
        exists(select 1 from redraw_votes where round_id=r.id and user_id=$2) mine
@@ -53,8 +54,10 @@ export async function redrawStatus(
 
   if (!r || r.status !== "final") return null;
 
+  const gate = redrawGate(r);
   return {
-    locked: r.requests_sent,
+    locked:
+      gate === "ok" ? false : gate === "confirmed" ? "confirmed" : "locked",
     votes: r.votes,
     members: r.members,
     needed: redrawThreshold(r.members),
@@ -85,9 +88,15 @@ export async function toggleRedrawVote(
       throw new RedrawError("not in this group", 403);
     }
 
+    // confirmed_at is read through JSON so this works before the vote confirmation migration.
     const last = (
       await c.query(
-        "select id,status,attempt,excluded,requests_sent from plan_rounds where group_id=$1 order by (status='final') desc,id desc limit 1",
+        `select id,status,attempt,excluded,requests_sent,
+           to_jsonb(r)->>'confirmed_at' confirmed_at
+         from plan_rounds r
+         where group_id=$1
+         order by (status='final') desc,id desc
+         limit 1`,
         [groupId],
       )
     ).rows[0];
@@ -135,14 +144,27 @@ export async function toggleRedrawVote(
     }
 
     // Threshold reached. Flip the old round in ONE conditional statement:
-    // if the payer's "send" got there first, this matches nothing.
+    // if the payer's "send" or the creator's "confirm" got there first, this matches nothing.
     const flipped = await c.query(
-      "update plan_rounds set status='redrawn' where id=$1 and status='final' and requests_sent=false returning winner_plan_id",
+      `update plan_rounds r set status='redrawn'
+       where id=$1 and status='final' and requests_sent=false
+         and to_jsonb(r)->>'confirmed_at' is null
+       returning winner_plan_id`,
       [last.id],
     );
 
     if (!flipped.rowCount) {
-      throw new RedrawError(REDRAW_MESSAGES.locked, 409);
+      const now = (
+        await c.query(
+          "select status,requests_sent,to_jsonb(r)->>'confirmed_at' confirmed_at from plan_rounds r where id=$1",
+          [last.id],
+        )
+      ).rows[0];
+      const why = redrawGate(now);
+      throw new RedrawError(
+        REDRAW_MESSAGES[why === "ok" ? "locked" : why],
+        409,
+      );
     }
 
     const places = (

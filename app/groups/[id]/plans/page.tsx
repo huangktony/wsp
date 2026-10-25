@@ -225,6 +225,7 @@ export default function Plans({
   return (
     <div className={inter.className}>
       <Page back={backHref}>
+        <div className="glass mb-3 !p-3">
         {data.round.sample_places && (
           <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>
         )}
@@ -237,6 +238,7 @@ export default function Plans({
           {data.group.name}
           {data.round.attempt > 1 && ` · Round ${data.round.attempt}`}
         </p>
+        </div>
         <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">
           {open.length} {open.length === 1 ? "plan" : "plans"} for{" "}
           {data.round.slot}

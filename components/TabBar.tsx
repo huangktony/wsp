@@ -23,7 +23,7 @@ export function TabBar() {
   return (
     <>
       {showAdd && (
-        <div className="pointer-events-none fixed bottom-[calc(108px+env(safe-area-inset-bottom,0px))] left-1/2 z-50 flex w-full max-w-[390px] -translate-x-1/2 justify-end px-6">
+        <div className="pointer-events-none fixed bottom-[calc(92px+env(safe-area-inset-bottom,0px))] left-1/2 z-50 flex w-full max-w-[390px] -translate-x-1/2 justify-end px-4">
           <Link
             href={addHref}
             aria-label={addLabel}
@@ -35,7 +35,7 @@ export function TabBar() {
       )}
       <nav
         aria-label="Main navigation"
-        className="fixed bottom-0 left-1/2 z-50 flex h-[calc(92px+env(safe-area-inset-bottom,0px))] w-full max-w-[390px] -translate-x-1/2 items-start justify-around border-t border-azure bg-nav px-7 pt-3"
+        className="fixed bottom-[calc(16px+env(safe-area-inset-bottom,0px))] left-1/2 z-50 flex h-16 w-[calc(100%-32px)] max-w-[358px] -translate-x-1/2 items-center justify-around rounded-full border border-azure bg-nav px-4 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
       >
         {TABS.map((t) => {
           const active = path === t.href || path.startsWith(`${t.href}/`);
@@ -46,7 +46,7 @@ export function TabBar() {
               href={t.href}
               aria-label={t.label}
               aria-current={active ? "page" : undefined}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${focus} ${active ? "text-ink" : "text-inactive"}`}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${focus} ${active ? "bg-pistachio text-ink" : "text-inactive"}`}
             >
               <svg
                 width={28}

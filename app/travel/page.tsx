@@ -52,7 +52,7 @@ export default function TravelHome() {
       </div>
     </article>;
   };
-  return <Page variant="plain"><div className={`${inter.className} bg-surface text-indigo`}>
+  return <Page variant="plain"><div className={`${inter.className} text-indigo`}>
     <p className="px-6 pt-6 text-xs font-extrabold tracking-[0.18em] text-secondary">WSP TRAVEL</p>
     <header className="flex items-center justify-between px-6 pb-3 pt-2">
       {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); } }}>

@@ -134,7 +134,7 @@ export default function Profile() {
         </header>
 
         <div className="space-y-5">
-          <div className="flex items-center gap-4 text-indigo">
+          <div className="glass flex items-center gap-4 !p-3 text-indigo">
             <div className="relative shrink-0">
               <button type="button" aria-label="Profile photo options" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`rounded-full ${focus}`}>
                 <Avatar name={data.name} src={data.avatar} className="h-16 w-16 bg-orchid text-2xl text-orchidink" />

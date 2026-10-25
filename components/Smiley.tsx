@@ -2,7 +2,7 @@ export function Smiley({
   size = 48,
   fill = "fill-orchid",
   faceColor,
-  featureColor = "var(--logo-ink)",
+  featureColor = "var(--smiley-ink)",
 }: {
   size?: number;
   fill?: string;

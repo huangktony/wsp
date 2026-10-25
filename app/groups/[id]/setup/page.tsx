@@ -86,7 +86,7 @@ export default function Setup({
 
   return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
+      <div className={`${inter.className} px-6 pt-6 text-indigo`}>
         <BackButton
           href={
             data?.availability?.length

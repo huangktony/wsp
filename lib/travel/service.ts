@@ -183,7 +183,7 @@ export async function readTrip(id: number, uid: number) {
     };
   });
 }
-async function financial(m: Pick<Member, 'user_id' | 'nessie_account_id'>): Promise<Financial> {
+export async function financial(m: Pick<Member, 'user_id' | 'nessie_account_id'>): Promise<Financial> {
   const checkedAt = Date.now();
   if (!m.nessie_account_id) return { available: null, checkedAt, source: 'unknown' };
   if (!isLiveAccount(m.nessie_account_id)) return { available: null, checkedAt, source: 'simulated' };

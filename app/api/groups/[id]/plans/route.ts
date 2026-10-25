@@ -1,3 +1,4 @@
+import { normalizeAvailability } from "@/lib/availability";
 import { roundInclusion, includedVoteSql } from "@/lib/roundParticipation";
 import { resolveRoundCity, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
 import { MissingCityError, PlaceSearchError } from "@/lib/serpapi";
@@ -129,6 +130,7 @@ export async function GET(
   );
 
   for (const p of plans) {
+    p.generated_by = p.stops?.length && p.stops.every((s: any) => s.generated_by === "gemini") ? "gemini" : null;
     p.stops = withStopCosts(p.stops, p.cost);
     p.my_vote = p.my_vote === "pass" ? "veto" : p.my_vote;
     // A majority veto removes the plan. Saying so is the one result shared while voting is open.
@@ -143,15 +145,18 @@ export async function GET(
     id: number;
     name: string;
     setup_done: boolean;
+    availability?: string[];
   }>(
     `select u.id,u.name,
-       (jsonb_array_length(m.availability)>0) setup_done
+       m.availability,(jsonb_array_length(m.availability)>0) setup_done
      from memberships m
      join users u on u.id=m.user_id
      where m.group_id=$1
      order by m.joined_at`,
     [id],
   );
+
+  for (const member of members) { if (member.availability) member.setup_done = normalizeAvailability(member.availability).length > 0; delete member.availability; }
 
   let split = null;
   let payments: any[] = [];
@@ -174,7 +179,7 @@ export async function GET(
 
   return json({
     ...base,
-    round: publicRound,
+    round: { ...publicRound, time_match: round.search_settings?.[0]?.time_match ?? null },
     inclusion,
     plans,
     members,

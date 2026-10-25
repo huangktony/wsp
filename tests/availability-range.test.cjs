@@ -1,0 +1,26 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const ts=require('typescript');
+const walk=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(walk):[n,...walk(n.props?.children)];
+test('range handles expose accessible values and support keyboard, captured pointer and touch dragging',()=>{
+ let cursor=0;const refs=[];let value={start:1020,end:1260};const exports={};let captured,released;
+ const mocks={react:{useRef:v=>refs[cursor++]??(refs[cursor-1]={current:v})},'react/jsx-runtime':require('react/jsx-runtime'),'@/lib/availability':require('../lib/availability.ts')};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync('components/AvailabilityRange.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require:n=>mocks[n]});
+ const render=()=>{cursor=0;return exports.AvailabilityRange({value,minimum:630,label:'Tomorrow',onChange:v=>{value=v;}});};
+ let tree=render();refs[0].current={getBoundingClientRect:()=>({left:0,width:240})};
+ const handles=()=>walk(tree).filter(n=>n.props?.role==='slider');
+ assert.equal(handles().length,2);assert.equal(handles()[0].props['aria-valuemin'],630);assert.equal(handles()[1].props['aria-valuemax'],1440);
+ assert.equal(handles()[0].props['aria-valuetext'],'5:00 PM');
+ assert.match(handles()[0].props.className,/h-12 w-11/);
+ handles()[0].props.onKeyDown({key:'ArrowRight',preventDefault(){}});tree=render();assert.equal(value.start,1050);
+ const target={focus(){},setPointerCapture:id=>{captured=id;},releasePointerCapture:id=>{released=id;}};
+ const event=x=>({pointerId:7,pointerType:'touch',clientX:x,currentTarget:target,preventDefault(){}});
+ handles()[0].props.onPointerDown(event(175));tree=render();assert.equal(captured,7);
+ handles()[0].props.onPointerMove(event(239));tree=render();assert.equal(value.start,1200);assert.equal(value.end-value.start,60);
+ assert.equal(handles()[0].props.style.touchAction,'none');
+ handles()[0].props.onPointerUp(event(239));assert.equal(released,7);
+ handles()[1].props.onPointerDown(event(240));tree=render();assert.equal(value.end,1440);assert.equal(handles()[1].props['aria-valuetext'],'12:00 AM');
+ handles()[1].props.onPointerCancel();
+});

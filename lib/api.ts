@@ -1,3 +1,4 @@
+import { normalizeAvailability } from "./availability";
 import { NextResponse } from "next/server";
 import { currentUserId } from "./session";
 import { q1 } from "./db";
@@ -15,5 +16,6 @@ export async function isMember(groupId: number, userId: number) {
 }
 /** Setup is done once the member has picked at least one free time. Until then they can't find plans or vote. */
 export async function setupDone(groupId: number, userId: number) {
-  return !!(await q1("select 1 from memberships where group_id=$1 and user_id=$2 and jsonb_array_length(availability)>0", [groupId, userId]));
+  const row = await q1<{ availability: string[] }>("select availability from memberships where group_id=$1 and user_id=$2", [groupId, userId]);
+  return normalizeAvailability(row?.availability).length > 0;
 }

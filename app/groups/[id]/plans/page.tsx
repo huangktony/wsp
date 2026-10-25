@@ -1,4 +1,6 @@
 "use client";
+import { availabilityLabel } from "@/lib/availability";
+import { TimeNotice } from "@/components/TimeNotice";
 
 import Link from "next/link";
 import { groupHref } from "@/lib/finding";
@@ -242,8 +244,9 @@ export default function Plans({
         </div>
         <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">
           {open.length} {open.length === 1 ? "plan" : "plans"} for{" "}
-          {data.round.slot}
+          {availabilityLabel(data.round.slot ?? "")}
         </h1>
+        <TimeNotice match={data.round.time_match} />
         <div className="mb-5 flex flex-wrap gap-2 [&>span]:text-xs [&_span]:font-bold">
           <span className="chip-pink">
             {status === "voting" ? left(deadline - now) : "Voting closed"}
@@ -307,8 +310,9 @@ export default function Plans({
                     {Math.round(p.cost)} each
                   </span>
                 </div>
+                {p.generated_by === "gemini" && <p className="mt-1 text-xs font-semibold text-secondary">Picked by Gemini</p>}
                 <p className="mt-1 text-sm font-normal text-secondary">
-                  {data.round.slot} · {p.stops.length}{" "}
+                  {availabilityLabel(data.round.slot ?? "")} · {p.stops.length}{" "}
                   {p.stops.length === 1 ? "stop" : "stops"}
                 </p>
                 <ol className="my-3 space-y-1 text-sm font-normal">

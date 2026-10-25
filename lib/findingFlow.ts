@@ -7,6 +7,7 @@ export type FindingGroup = {
   members: { id: number; setup_done: boolean }[];
   groupTier: string | null;
   finding: {
+    timeMatch?: import("./availability").TimeMatch | null;
     cityChanged?: boolean;
     needsNewSearch?: boolean;
     city?: string;

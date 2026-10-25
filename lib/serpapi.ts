@@ -1,3 +1,4 @@
+import type { Block } from "./availability";
 // Google Maps fields are optional: validate coordinates and prices before treating a venue as eligible.
 import { estCost, estimatePlace, parseRealPrice, rank, type PriceLevel } from "./price";
 import type { Tier } from "./tiers";
@@ -6,7 +7,7 @@ export { estCost };
 export type Place = {
   name: string; category: string; price: PriceLevel; cost: number; priceEstimated: boolean;
   reviews?: number; distanceMi?: number; searchRadiusMi?: number; radiusNote?: string;
-  rating: number; address: string; hours?: string; type?: string;
+  rating: number; address: string; hours?: string; type?: string; types?: string[];
 };
 
 /** The search term depends on the group's budget, so a "$" group searches for cheap places. */
@@ -18,6 +19,13 @@ const QUERY: Record<string, Record<Tier, string>> = {
   nightlife: { $: "live music free entry", $$: "live music bars", $$$: "cocktail bars" },
   creative: { $: "free art galleries", $$: "pottery painting", $$$: "art workshops" },
   outdoors: { $: "parks", $$: "parks", $$$: "parks" },
+  music: { $: "free live music", $$: "live music venues", $$$: "concert venues" },
+  games: { $: "board game cafes", $$: "bowling arcade", $$$: "escape rooms" },
+  sports: { $: "public sports courts", $$: "sports activities", $$$: "sports venues" },
+  "art & museums": { $: "free museums art galleries", $$: "museums art galleries", $$$: "museums art workshops" },
+  shopping: { $: "thrift stores markets", $$: "shopping boutiques", $$$: "shopping malls boutiques" },
+  movies: { $: "discount movie theaters", $$: "movie theaters", $$$: "premium movie theaters" },
+  fitness: { $: "free outdoor fitness", $$: "fitness classes", $$$: "fitness studios" },
 };
 export const queryFor = (cat: string, tier: PriceLevel): string | undefined => QUERY[cat]?.[tier === "$$$$" ? "$$$" : tier];
 /** Coffee and parks are cheap whatever the group budget; food and entertainment take the tier of their query. */
@@ -27,7 +35,7 @@ const queryTierFor = (cat: string, tier: PriceLevel): Tier => (cat === "coffee" 
 export function placeFromResult(r: any, cat: string, tier: PriceLevel): Place {
   const types: string[] = [r.type, ...(Array.isArray(r.types) ? r.types : [])].filter((t) => typeof t === "string");
   const g = estimatePlace({ queryTier: queryTierFor(cat, tier), types, realPrice: r.price });
-  return { name: r.title, category: cat, price: g.price, cost: g.cost, priceEstimated: g.estimated, rating: Number(r.rating) || 0, reviews: Number(String(r.reviews ?? 0).replace(/,/g, "")) || 0, address: r.address ?? "", hours: r.hours, type: types[0] };
+  return { name: r.title, category: cat, price: g.price, cost: g.cost, priceEstimated: g.estimated, rating: Number(r.rating) || 0, reviews: Number(String(r.reviews ?? 0).replace(/,/g, "")) || 0, address: r.address ?? "", hours: r.hours, type: types[0], types };
 }
 
 export function categoriesFor(interests: string[]): string[] {
@@ -43,7 +51,7 @@ export class MissingCityError extends Error {
   constructor() { super("Add a city to your group"); }
 }
 export type Coordinates = { latitude: number; longitude: number };
-export type SearchOptions = { fetch?: typeof fetch; sample?: boolean; center?: Coordinates };
+export type SearchOptions = { timeBlock?: Block; timeWindow?: {date:string;start:number;end:number;planStart:number}; fetch?: typeof fetch; sample?: boolean; center?: Coordinates };
 
 function coordinates(value: any): Coordinates | null {
   return value && Number.isFinite(value.latitude) && Number.isFinite(value.longitude)
@@ -145,13 +153,14 @@ export async function findPlaces(cats: string[], city: string, maxTier: string, 
       if (miles > radius) continue;
       const place = placeFromResult(raw, cat, maxTier as PriceLevel);
       if (!budgetAllowed(raw, place, maxTier)) continue;
+      if ((options.timeBlock === 'evening' || options.timeBlock === 'late-night') && /\b(breakfast|brunch)\b/i.test([place.name, place.type, ...(place.types ?? [])].join(' '))) continue;
       const id = raw.place_id ?? raw.data_id ?? `${place.name.toLowerCase()}|${place.address.toLowerCase()}`;
       if (!unique.has(id)) unique.set(id, { ...place, distanceMi: miles });
     }
     return [...unique.values()];
   };
   const search = async (cat: string, radius: number, start: number) => {
-    const params = { q: `${queryFor(cat, maxTier as PriceLevel)} in ${city}`, ll: `@${center.latitude},${center.longitude},${zoomForMiles(radius)}z`, start: String(start) };
+    const params = { q: `${queryFor(cat, maxTier as PriceLevel)}${options.timeBlock ? ` ${options.timeBlock === "evening" && cat === "food" ? "evening dinner" : options.timeBlock.replace("-", " ")}` : ""} in ${city}`, ll: `@${center.latitude},${center.longitude},${zoomForMiles(radius)}z`, start: String(start) };
     const data = await maps(params, request);
     const raw: any[] = data.local_results ?? [];
     results.push(...raw.map(raw => ({ raw, cat })));

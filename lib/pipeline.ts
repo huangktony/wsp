@@ -1,10 +1,12 @@
+import { normalizeAvailability, snapshotTime, chooseTime, parseAvailability, availabilityLabel, type TimeMatch } from "./availability";
+import { filterAvoidedPlaces } from "./venueAvoids";
 import { includedVoteSql } from "./roundParticipation";
 import {
   roundSettings,
   searchPreferences,
   settingsChanged,
 } from "./roundSettings";
-import { bestSlot, resolveRoundCity, sameCity } from "./finding";
+import { resolveRoundCity, sameCity } from "./finding";
 export { bestSlot } from "./finding";
 import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
@@ -85,7 +87,7 @@ export async function startRound(
 
     const members = (
       await c.query(
-        "select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
+        "select m.user_id,m.availability,m.comfort_tier,u.name,u.budget_tier,u.interests,u.max_distance_mi,to_jsonb(m)->'preferences' preferences from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
         [groupId],
       )
     ).rows;
@@ -146,8 +148,10 @@ export async function startRound(
       [groupId],
     );
 
+    const timeMatch = snapshotTime(settings, last);
+    if (!timeMatch) throw new NoPlacesError("No available window lasts two hours. Add a longer range to find plans.");
     const r = await c.query(
-      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
+      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings,slot) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb,$9) returning id",
       [
         groupId,
         attempt,
@@ -157,6 +161,7 @@ export async function startRound(
         sample,
         preferences.tier,
         JSON.stringify(settings),
+        timeMatch?.slot ?? null,
       ],
     );
 
@@ -177,7 +182,7 @@ export async function fillRound(
 ): Promise<void> {
   try {
     const round = await q1<any>(
-      `select r.id,r.group_id,r.excluded,r.group_tier,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,
+      `select r.id,r.group_id,r.excluded,r.group_tier,r.slot,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,
       coalesce((to_jsonb(r)->>'search_distance_mi')::int,
         (select min(u.max_distance_mi)::int from memberships m join users u on u.id=m.user_id where m.group_id=r.group_id and jsonb_array_length(m.availability)>0)) search_distance_mi,
       (to_jsonb(r)->>'sample_places')::boolean sample_places,g.city current_city,g.lat,g.lng,g.vote_hours
@@ -190,7 +195,7 @@ export async function fillRound(
       lat: round.lat,
       lng: round.lng,
     });
-    const members: { availability: string[]; interests: string[] }[] =
+    const members: { user_id?: number; name?: string; time_match?: TimeMatch; availability: string[]; interests: string[]; included?: boolean; comfort_tier?: string; budget_tier?: string; preferences?: { interests_text?: string; avoids_text?: string; legacy_interests_text?: string; avoids?: string[] } }[] =
       round.search_settings ??
       (await q<any>(
         "select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1",
@@ -198,9 +203,12 @@ export async function fillRound(
       ));
 
     // Members who haven't finished setup don't drag the slot or interests down.
-    const ready = members.filter((m) => m.availability.length);
-    const basis = ready.length ? ready : members;
-    const { slot, free } = bestSlot(basis.map((m) => m.availability));
+    const ready = members.filter((m) => m.included !== false && normalizeAvailability(m.availability).length);
+    if (!ready.length) throw new NoPlacesError("At least one included member must finish setup before finding plans.");
+    const basis = ready;
+    const timeMatch = members[0]?.time_match ?? chooseTime(basis);
+    if (!timeMatch) throw new NoPlacesError("No available window lasts two hours. Add a longer range to find plans.");
+    const { slot, free } = timeMatch;
     const tier = round.group_tier ?? (await groupTier(round.group_id));
     const sets = basis.map((m) => m.interests);
     const shared = sets.length
@@ -216,23 +224,33 @@ export async function fillRound(
       round.search_distance_mi,
       {
         sample: round.sample_places === true,
+        timeBlock: parseAvailability(slot)?.block,
+        timeWindow: parseAvailability(slot) ?? undefined,
         center: coords
           ? { latitude: coords.lat, longitude: coords.lng }
           : undefined,
       },
     );
+    const previous = await q<{ place: string }>("select distinct s->>'place' place from plans p join plan_rounds r on r.id=p.round_id, jsonb_array_elements(p.stops) s where r.group_id=$1 and r.id<>$2", [round.group_id, roundId]);
+    previous.forEach(p => excluded.add(p.place));
     const fresh = found.filter((p) => !excluded.has(p.name));
 
-    // If leaving out vetoed places empties the list, reuse them rather than show nothing.
-    const places = fresh.length >= 2 ? fresh : found;
+    // Never reintroduce previously shown venues when the fresh candidate pool is exhausted.
+    const filtered = filterAvoidedPlaces(fresh, basis.map(m => m.preferences?.avoids ?? []));
+    const places = filtered.places;
     const drafts = await generatePlans({
+      roundId,
+      sample: round.sample_places === true,
       city,
       slot,
       tier,
       interests,
+      preferences: basis.map(m => ({ ...m.preferences, tier: m.comfort_tier ?? m.budget_tier })),
       places,
       maxDistanceMi: round.search_distance_mi,
       avoid: [...excluded],
+      avoidTags: filtered.active,
+      relaxedAvoidTags: filtered.relaxed,
     });
 
     if (!drafts.length) {
@@ -246,18 +264,16 @@ export async function fillRound(
     );
 
     for (const d of drafts) {
-      const stops = enrichStops(d.stops, d.est_cost_per_person, byName);
+      const stops = enrichStops(d.stops, d.est_cost_per_person, byName).map(s => ({ ...s, ...(d.generated_by === "gemini" ? { generated_by: "gemini" } : {}) }));
 
       // One definition: the cost is the sum of the stop costs, the level is the most expensive stop.
       const total = stops.reduce((s, x) => s + x.cost, 0);
       const price = planLevel(stops);
       const radiusNote = found.find((p) => p.radiusNote)?.radiusNote;
-      const baseWhy = radiusNote
-        ? `${d.why_fits} ${radiusNote}`
-        : d.why_fits;
+      const baseWhy = [d.why_fits, radiusNote, filtered.note].filter(Boolean).join(" ");
       const why =
         free < basis.length
-          ? `${baseWhy} ${free} of ${basis.length} are free ${slot}.`
+          ? `${baseWhy} ${free} of ${basis.length} are free ${availabilityLabel(slot)}.`
           : baseWhy;
 
       await q(

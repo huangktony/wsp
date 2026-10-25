@@ -105,3 +105,11 @@ test('any changed member setting, joining/leaving, or absent legacy snapshot mak
   assert.equal(settingsChanged(saved, members.slice(1)), true);
   assert.equal(settingsChanged(null, members), true);
 });
+
+test('evening searches include the block and exclude breakfast venues before planning', async () => {
+  const f = transport([venue('Breakfast cafe',0.2,'$'), venue('All day brunch',0.2,'$'), ...Array.from({length:8},(_,i)=>venue(`Dinner ${i}`,0.2,'$'))]);
+  const places = await findPlaces(['food'],'Evening Test City','$',1,{center,fetch:f.request,timeBlock:'evening'});
+  assert.equal(places.length,8);
+  assert.ok(places.every(p=>! /breakfast|brunch/i.test(p.name)));
+  assert.ok(f.calls.every(c=>c.q.includes('evening dinner')));
+});

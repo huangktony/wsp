@@ -13,6 +13,9 @@ function load(file, mocks, globals = {}) {
   }).outputText;
   vm.runInNewContext(code, { exports, ...globals, require(name) {
     if (name in mocks) return mocks[name];
+      if (name === './availability' || name === '@/lib/availability') return require('../lib/availability.ts');
+      if (name === '@/components/TimeNotice') return { TimeNotice: 'time-notice' };
+      if (name === './setupPreferences' || name === '@/lib/setupPreferences') return load('lib/setupPreferences.ts', { zod: require('zod') });
       if (name === "@/lib/finding") return load("lib/finding.ts", {});
       if (name === './roundParticipation' || name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
       if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };

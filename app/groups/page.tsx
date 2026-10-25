@@ -8,12 +8,6 @@ import { Page } from "@/components/Page";
 import { Smiley } from "@/components/Smiley";
 import { useApi } from "@/lib/client";
 import { groupHref } from "@/lib/finding";
-import {
-  splitGroupStories,
-  groupStoryColor,
-  needsVoteBadge,
-  groupStoryLabel,
-} from "@/lib/groupStories";
 import { formatMoney } from "@/lib/format";
 
 const inter = Inter({
@@ -134,8 +128,10 @@ function GroupsContent() {
       ),
   );
 
-  const { open, other } = splitGroupStories(results ?? []);
-  const featured = other[0];
+  const hasOpenVote = (group: any) => group.round_status === "voting" && group.has_plans === true;
+  const timestamp = (value?: string | null) => value ? Date.parse(value) || 0 : 0;
+  const open = (results ?? []).filter(hasOpenVote).sort((a, b) => timestamp(b.round_started_at) - timestamp(a.round_started_at) || b.id - a.id);
+  const other = (results ?? []).filter(group => !hasOpenVote(group)).sort((a, b) => timestamp(b.last_activity_at) - timestamp(a.last_activity_at) || b.id - a.id);
 
   return (
     <Page variant="plain">
@@ -241,47 +237,6 @@ function GroupsContent() {
           {data && !error ? `${results?.length ?? 0} groups found` : ""}
         </p>
 
-        {open.length > 0 && (
-          <>
-            <h2 className="mb-1 flex items-center gap-2 px-6 font-[inherit] text-sm font-bold text-[#35607A]">
-              Needs Action
-              <span className="rounded-full bg-pistachio px-2 py-0.5 text-xs font-extrabold text-indigo">
-                {open.length}
-              </span>
-            </h2>
-
-            <section
-              aria-label="Needs action"
-              className="flex snap-x snap-mandatory gap-4 scroll-px-6 overflow-x-auto px-6 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {open.map((group) => (
-                <Link
-                  key={group.id}
-                  href={groupHref(group)}
-                  aria-label={groupStoryLabel(group)}
-                  className={`flex w-16 shrink-0 snap-start flex-col items-center gap-1.5 rounded-xl text-xs font-bold ${focus}`}
-                >
-                  <span className="relative h-16 w-16 rounded-full border-[3px] border-[#8FB78F] p-[3px]">
-                    <span
-                      className={`flex h-full w-full items-center justify-center rounded-full text-xl font-extrabold ${groupStoryColor(group.id)}`}
-                    >
-                      {initials(group.name)}
-                    </span>
-                    {needsVoteBadge(group) && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute -right-0.5 -top-0.5 h-[14px] w-[14px] rounded-full border-2 border-surface bg-pink"
-                      />
-                    )}
-                  </span>
-                  <span className="w-full max-w-[68px] truncate text-center">
-                    {group.name}
-                  </span>
-                </Link>
-              ))}
-            </section>
-          </>
-        )}
 
         <div className="flex flex-col gap-4 px-6">
           {error && (
@@ -328,25 +283,22 @@ function GroupsContent() {
               className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-6 px-6 py-2"
             >
               {open.map((group) => {
-                const needsVote = needsVoteBadge(group);
+                const needsVote = group.can_vote === true && !group.my_voted;
 
                 return (
                   <article
                     key={group.id}
-                    className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl bg-votebody`}
+                    className="relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl bg-votebody"
                   >
                     <div
-                      className={`flex h-[84px] items-start justify-between rounded-t-3xl bg-votehead px-[18px] py-4`}
+                      className="flex h-[84px] items-start justify-between rounded-t-3xl bg-votehead px-[18px] py-4"
                     >
                       {group.status && (
                         <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">
                           {group.status}
                         </span>
                       )}
-                      <Smiley
-                        size={48}
-                        fill="fill-voteface"
-                      />
+                      <Smiley size={48} fill="fill-voteface" />
                     </div>
                     <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
                       <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
@@ -384,11 +336,9 @@ function GroupsContent() {
             </h2>
           )}
 
-          {featured && renderGroupCard(featured)}
-
           {other.map(
             (group, index) =>
-              group.id !== featured?.id && (group.status === "SET UP" ? renderGroupCard(group) : (
+              (group.status === "SET UP" ? renderGroupCard(group) : (
                 <Link
                   key={group.id}
                   href={groupHref(group)}

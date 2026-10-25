@@ -1,3 +1,4 @@
+import { snapshotTime } from "./availability";
 import { roundSettings, searchPreferences } from "./roundSettings";
 import { hasSearchMetadata } from "./pipeline";
 import { pool, q1 } from "./db";
@@ -91,7 +92,7 @@ export async function toggleRedrawVote(
     // confirmed_at is read through JSON so this works before the vote confirmation migration.
     const last = (
       await c.query(
-        `select id,status,attempt,excluded,requests_sent,
+        `select id,status,attempt,excluded,requests_sent,to_jsonb(r)->'search_settings' search_settings,
            to_jsonb(r)->>'confirmed_at' confirmed_at
          from plan_rounds r
          where group_id=$1
@@ -198,7 +199,7 @@ export async function toggleRedrawVote(
 
     const members = (
       await c.query(
-        "select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
+        "select m.user_id,m.availability,m.comfort_tier,u.name,u.budget_tier,u.interests,u.max_distance_mi,to_jsonb(m)->'preferences' preferences from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
         [groupId],
       )
     ).rows;
@@ -213,8 +214,10 @@ export async function toggleRedrawVote(
       );
     }
 
+    const timeMatch = snapshotTime(settings, last);
+    if (!timeMatch) throw new RedrawError("No available window lasts two hours. Add a longer range to find plans.", 409);
     const created = await c.query(
-      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
+      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings,slot) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb,$9) returning id",
       [
         groupId,
         last.attempt + 1,
@@ -224,6 +227,7 @@ export async function toggleRedrawVote(
         process.env.USE_SAMPLE_PLACES === "true",
         preferences.tier,
         JSON.stringify(settings),
+        timeMatch?.slot ?? null,
       ],
     );
 

@@ -1,3 +1,4 @@
+import { normalizeAvailability } from "@/lib/availability";
 import { roundInclusion } from "@/lib/roundParticipation";
 import { getFindingDetails } from "@/lib/findingData";
 import { getVotingParticipation } from "@/lib/voting";
@@ -28,9 +29,11 @@ export async function GET(
 
   // Members: name and whether setup is done. Never tier, interests or spending.
   const members = await q<any>(
-    "select u.id,u.name,u.avatar,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
+    "select u.id,u.name,u.avatar,m.availability,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
     [id],
   );
+
+  for (const member of members) { if (member.availability) member.setup_done = normalizeAvailability(member.availability).length > 0; delete member.availability; }
 
   const round = await q1<any>(
     "select id,status,to_jsonb(r)->'search_settings' search_settings from plan_rounds r where group_id=$1 order by (status='final') desc,id desc limit 1",

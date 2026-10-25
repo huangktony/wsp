@@ -1,4 +1,6 @@
 "use client";
+import { availabilityLabel } from "@/lib/availability";
+import { TimeNotice } from "@/components/TimeNotice";
 import { groupHref, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
 import { RedrawVote } from "@/components/RedrawVote";
 import Link from "next/link";
@@ -79,7 +81,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
   const planCount = details?.planCount || 0;
   const tier = details?.round?.group_tier ?? group?.groupTier;
   const rows = [
-    ["Shared free time found", details?.slot ?? "Matching times"],
+    ["Shared free time found", details?.slot ? availabilityLabel(details.slot) : "Matching times"],
     ["Places searched nearby", details?.maxDistanceMi == null ? "Checking preferences" : `within ${details.maxDistanceMi} mi`],
     ["Filtered to the group budget", isTier(tier) ? tierLabel(tier) : "Checking budget"],
     [planCount ? `Writing ${planCount} ${planCount === 1 ? "plan" : "plans"}` : "Writing plans", "almost there"],
@@ -105,6 +107,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
       <section aria-label="Finding progress" className="mt-auto flex flex-col gap-1.5 rounded-t-[32px] bg-white px-6 pb-[30px] pt-6 text-indigo">
         {details?.city && <p className="text-sm text-secondary">{details.city}</p>}
         {details?.round?.sample_places && <p className="text-sm font-bold text-maroon">Sample data</p>}
+        <TimeNotice match={details?.timeMatch} />
         <ol>
           {rows.map(([label, detail], index) => {
             const done = index < step;

@@ -1,12 +1,7 @@
 "use client";
 import { useState } from "react";
 import { api } from "@/lib/client";
-
-const OPTIONS = [
-  { profile: "frugal", label: "Frugal" },
-  { profile: "average", label: "Average" },
-  { profile: "big", label: "Big spender" },
-] as const;
+import { PROFILES, PROFILE_LABELS } from "@/lib/profiles";
 
 /** Picks a demo spender profile and links the bank account right away. Used on Spending and Setup. */
 export function LinkBank({ onLinked }: { onLinked: (tier: string) => void }) {
@@ -27,8 +22,8 @@ export function LinkBank({ onLinked }: { onLinked: (tier: string) => void }) {
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold text-muted">Pick a demo account</p>
-      {OPTIONS.map((o) => (
-        <button key={o.profile} type="button" className="btn-ghost" disabled={busy} onClick={() => link(o.profile)}>{busy ? "Linking…" : o.label}</button>
+      {PROFILES.map((p) => (
+        <button key={p} type="button" className="btn-ghost" disabled={busy} onClick={() => link(p)}>{busy ? "Linking…" : PROFILE_LABELS[p]}</button>
       ))}
       {err && <p className="text-sm font-semibold text-deep">{err}</p>}
     </div>

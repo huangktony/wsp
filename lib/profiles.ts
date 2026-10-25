@@ -3,6 +3,8 @@
 export const PROFILES = ["frugal", "average", "big"] as const;
 export type Spender = (typeof PROFILES)[number];
 
+export const PROFILE_LABELS: Record<Spender, string> = { frugal: "Frugal", average: "Average", big: "Big spender" };
+
 /** Fun (food and entertainment) purchase amounts per profile: frugal is all $, average all $$, big all $$$. */
 export const FUN_RANGE: Record<Spender, [number, number]> = { frugal: [5, 11], average: [14, 28], big: [32, 60] };
 

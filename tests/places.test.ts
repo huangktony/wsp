@@ -55,8 +55,8 @@ test("a place with no helpful type takes the tier of the query that found it", (
 test("real price fields win if SerpApi ever sends one", () => {
   assert.equal(parseRealPrice("$"), "$");
   assert.equal(parseRealPrice("$$"), "$$");
-  assert.equal(parseRealPrice("$$$$"), "$$$");
-  assert.equal(parseRealPrice("$10–20"), "$"); // midpoint 15
+  assert.equal(parseRealPrice("$$$$"), "$$$$");
+  assert.equal(parseRealPrice("$10–20"), "$$"); // midpoint 15
   assert.equal(parseRealPrice("$20-30"), "$$"); // midpoint 25
   assert.equal(parseRealPrice("$60"), "$$$");
   assert.equal(parseRealPrice("n/a"), null);

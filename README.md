@@ -159,7 +159,7 @@ Leave it unset or disabled for real places. Restart the dev server after env cha
 No API keys are logged. Search failures appear in the Finding plans screen.
 
 Creation validates a US city and state, geocodes it, and saves the city and coordinates with the creator membership in one transaction. There is currently no city-edit UI for
-existing groups. New rounds snapshot the saved city and the smallest member distance
+existing groups. New rounds snapshot the saved city and the smallest setup-complete member distance
 preference, use the group's saved coordinates when the city matches (otherwise geocode the round's saved city), and filter venues by straight-line miles from that city
 center. Maps results without coordinates are excluded rather than assumed nearby.
 The diagnostic command accepts a city: `npm run places:check -- '$' 'Dallas, TX'`
@@ -196,3 +196,39 @@ The live database also has `redraw_votes(round_id, user_id)`, which is not defin
 this checkout's schema or referenced by its API routes. It was left untouched.
 `lib/finding.ts` is pure code; its counts and `setup_done` values are derived, not
 additional database columns. No other missing columns were found.
+
+
+### Search settings and fresh rounds
+
+Review `db/migrations/20261024_round_search_settings.sql` after the round-search-context
+migration. This adds only `search_settings jsonb`, nullable with no default or backfill.
+Neither migration was applied by the assistant. New searches require both; old plans
+remain readable and are marked out of date until regenerated.
+
+Each new round stores a server-only, canonical snapshot of members' distance, comfort
+and suggested tier, interests, availability, and membership. The group distance is the
+minimum among setup-complete members; the budget is the lowest effective member tier.
+Generation uses that snapshot, including the saved tier and city. Changed settings
+show **Settings changed. Find new plans to update.** on group home. Individual financial
+preferences in the snapshot are never included in the group API response.
+
+Maps requests use distance-dependent zoom (1/2/5/10/20 miles -> 15/14/13/12/11;
+larger distances -> 10). GPS/haversine filtering enforces miles from the city center.
+If fewer than three candidates survive, a single wider viewport is searched, and the
+radius increases in two steps up to the next distance band (above 20 miles, at most
+twice the requested radius). Any expansion is stated in each plan's Why text and the
+actual radius is saved for the Finding screen. Budgets are never relaxed.
+
+Known dollar prices are enforced, including rejecting $$$$ for $$$ groups. Numeric
+price ranges use their midpoint: <=12 is $, <=30 $$, <=60 $$$, otherwise $$$$.
+At $, unpriced restaurants and paid venues are excluded; clearly free outdoor places,
+explicitly free-admission museums/galleries, and normally cheap coffee shops remain
+eligible. Estimated prices stay marked as estimates.
+
+Each category uses its first Maps page; a second page (start=20) is fetched only while
+fewer than eight distinct candidates survive. No deeper pages are requested. Identical
+engine/query/coordinates/zoom/page requests share a bounded 12-hour in-memory cache,
+including concurrent requests. The cache is per process, not in the database; errors
+are not cached. Ratings and review counts determine order, with random ties for variety.
+Changed settings can still produce some of the same good places; different results
+are not guaranteed. Development logs show safe parameters and filter counts, never keys.

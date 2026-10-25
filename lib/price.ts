@@ -2,12 +2,13 @@
 // so a place's price is ESTIMATED from the search that found it and from its Google Maps `types`.
 import type { Tier } from "./tiers";
 
-const COST: Record<string, number> = { $: 12, $$: 25, $$$: 50 };
+const COST: Record<string, number> = { $: 12, $$: 25, $$$: 50, $$$$: 80 };
 export const estCost = (p: string) => COST[p] ?? 25;
 /** "$" is 1 ... "$$$" is 3. */
 export const rank = (t: string) => t.length;
 
-export type PriceGuess = { price: Tier; cost: number; estimated: boolean };
+export type PriceLevel = Tier | "$$$$";
+export type PriceGuess = { price: PriceLevel; cost: number; estimated: boolean };
 
 // Types that mean a place is free. Blocked if any type says it is a paid venue (a "Beer garden" is not free).
 const FREE = /\b(park|hiking area|scenic spot|nature preserve|plaza|historical landmark|garden)\b/;
@@ -15,15 +16,15 @@ const NOT_FREE = /\b(restaurant|bar|pub|brewery|beer|cafe|coffee|shop|store|club
 const CHEAP = /\b(taco|fast food|hamburger|hot dog|food truck|coffee shop|cafe|ice cream|bakery|donut|sandwich)\b/;
 const PRICEY = /\b(steak house|steakhouse|fine dining|sushi|cocktail bar|wine bar)\b/;
 
-/** A real price from SerpApi if it ever sends one: "$".."$$$$", or "$10-20" / "$25" style (mapped by midpoint against 12/25/50). */
-export function parseRealPrice(raw: unknown): Tier | null {
+/** A real price from SerpApi if it ever sends one: "$".."$$$$", or "$10-20" / "$25" style (mapped by midpoint: <=12 $, <=30 $$, <=60 $$$, otherwise $$$$). */
+export function parseRealPrice(raw: unknown): PriceLevel | null {
   if (typeof raw !== "string" && typeof raw !== "number") return null;
   const s = String(raw).trim();
-  if (/^\${1,4}$/.test(s)) return (s.length >= 3 ? "$$$" : s) as Tier;
+  if (/^\${1,4}$/.test(s)) return s as PriceLevel;
   const nums = s.match(/\d+(?:\.\d+)?/g)?.map(Number);
   if (!nums?.length) return null;
   const mid = nums.length > 1 ? (nums[0] + nums[1]) / 2 : nums[0];
-  return mid <= 18.5 ? "$" : mid <= 37.5 ? "$$" : "$$$";
+  return mid <= 12 ? "$" : mid <= 30 ? "$$" : mid <= 60 ? "$$$" : "$$$$";
 }
 
 /**
@@ -48,7 +49,7 @@ export function estimatePlace(input: { queryTier: Tier; types: string[]; realPri
  * A plan's level is the price of its most expensive stop. A stop with no known price counts as the most expensive ("$$$"),
  * never the cheapest, so an unpriced stop can never make a plan look like it fits a small budget.
  */
-export function planLevel(stops: { price?: string }[]): Tier {
+export function planLevel(stops: { price?: string }[]): PriceLevel {
   const top = Math.max(1, ...stops.map((s) => (s.price ? rank(s.price) : 3)));
-  return (top >= 3 ? "$$$" : top === 2 ? "$$" : "$") as Tier;
+  return (top >= 4 ? "$$$$" : top === 3 ? "$$$" : top === 2 ? "$$" : "$") as PriceLevel;
 }

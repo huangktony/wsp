@@ -1,20 +1,30 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
-import { useApi } from "@/lib/client";
+import { api, useApi } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo";
 const avatarColors = ["bg-matcha text-matchaink", "bg-orchid text-orchidink", "bg-peach text-indigo", "border border-azure bg-pistachio text-indigo"];
 const primary = `flex min-h-[54px] w-full items-center justify-center rounded-[14px] bg-matcha px-4 py-3 text-[17px] font-bold text-matchaink ${focus}`;
 
+const pill = `flex min-h-[48px] w-full items-center justify-center rounded-full px-4 py-3 text-base font-bold disabled:opacity-60 ${focus}`;
+const danger = `${pill} bg-maroon text-white`;
+const quiet = `${pill} border border-outline bg-transparent text-indigo`;
+
 type Member = { id: number; name: string; setup_done: boolean; has_voted: boolean };
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: g, error } = useApi<any>(`/api/groups/${id}`);
+  const router = useRouter();
+  const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
+  const [newOwner, setNewOwner] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,7 +45,15 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       setCopyError("Could not copy. Select and copy the code instead.");
     }
   };
+  const run = (call: () => Promise<unknown>) => {
+    setBusy(true);
+    setActionError("");
+    call().then(() => router.push("/groups")).catch((e) => { setActionError(e.message); setBusy(false); });
+  };
   const members: Member[] = g?.members ?? [];
+  const others = members.filter((member) => member.id !== g?.me);
+  const isOwner = g?.isCreator === true;
+  const soloOwner = isOwner && others.length === 0;
   const open = g?.roundOpen === true, final = g?.round?.status === "final";
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
@@ -108,6 +126,33 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
           {!open && <Link href={`/groups/${id}/finding`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
           <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
+          {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
+            <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>
+            <button type="button" disabled={busy} onClick={() => run(() => api(`/api/groups/${id}`, "DELETE"))} className={danger}>Delete group</button>
+            <button type="button" disabled={busy} onClick={() => setConfirm(null)} className={quiet}>Cancel</button>
+          </div>}
+          {confirm === "leave" && <div role="alertdialog" aria-label="Confirm leave" className="flex flex-col gap-2.5 rounded-2xl border border-outline p-4">
+            {isOwner ? <>
+              <p className="text-[15px] font-bold">Pick a new owner before you leave {g.name}.</p>
+              <ul className="flex flex-col gap-2">
+                {others.map((member) => (
+                  <li key={member.id}><button type="button" aria-pressed={newOwner === member.id} onClick={() => setNewOwner(member.id)} className={`${pill} ${newOwner === member.id ? "bg-matcha text-matchaink" : "border border-outline text-indigo"}`}>{member.name}</button></li>
+                ))}
+              </ul>
+              <button type="button" disabled={busy || newOwner === null} onClick={() => run(() => api(`/api/groups/${id}/leave`, "POST", { newOwnerId: newOwner }))} className={danger}>Transfer ownership &amp; leave</button>
+            </> : <>
+              <p className="text-[15px] font-bold">Leave {g.name}? Your votes and preferences for this group will be removed.</p>
+              <button type="button" disabled={busy} onClick={() => run(() => api(`/api/groups/${id}/leave`, "POST", {}))} className={danger}>Leave group</button>
+            </>}
+            <button type="button" disabled={busy} onClick={() => setConfirm(null)} className={quiet}>Cancel</button>
+          </div>}
+          {actionError && <p role="alert" className="text-center text-sm text-maroon">{actionError}</p>}
+          {!confirm && <>
+            {soloOwner
+              ? <p className="text-center text-[13px] leading-[1.4] text-secondary">You're the only member, so you can't leave. Delete the group instead.</p>
+              : <button type="button" onClick={() => { setNewOwner(null); setConfirm("leave"); }} className={quiet}>Leave group</button>}
+            {isOwner && <button type="button" onClick={() => setConfirm("delete")} className={danger}>Delete group</button>}
+          </>}
         </div>
       </>}
     </main>

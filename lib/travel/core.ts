@@ -15,7 +15,8 @@ export type Vote = 'approve' | 'veto';
 export type Ballot = { userId: number; optionId: number; value: Vote };
 export type Quote = { origin: string; destination: string; depart: string; return: string; price: number | null; local: boolean; airlines: string[]; stops: number | null; duration: number | null; quotedAt: string; source: 'serpapi' | 'sample' | 'local'; error?: string; failure?: 'configuration' | 'provider' | 'no-fare' };
 export type Route = Quote & { userId: number; name: string; check: boolean | null; checkSource: 'nessie-sandbox' | 'simulated' | 'unknown' };
-export type Option = Candidate & { routes: Route[]; total: number | null; complete: boolean };
+export type Recommendation = { kind: 'lowest-cost' | 'easiest-travel' | 'balanced' | 'alternative'; label: string; reason: string };
+export type Option = Candidate & { routes: Route[]; total: number | null; complete: boolean; recommendation?: Recommendation };
 export const CHECK_TTL = 5 * 60_000;
 export const FARE_TTL = 15 * 60_000;
 export function validDay(value: unknown): value is string {
@@ -74,6 +75,7 @@ export function publicOptions(options: Option[], checkedAt: string, now = Date.n
   return options.map(o => ({
     id: o.id, airport: o.airport, depart: o.depart, return: o.return,
     complete: o.complete, total: o.complete ? o.total : null,
+    ...(o.recommendation ? { recommendation: { kind:o.recommendation.kind, label:o.recommendation.label, reason:o.recommendation.reason } } : {}),
     routes: o.routes.map(r => ({
       userId: r.userId, name: r.name, origin: r.origin, destination: r.destination, depart: r.depart, return: r.return,
       price: r.price, local: r.local, airlines: r.airlines, stops: r.stops, duration: r.duration,

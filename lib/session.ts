@@ -22,9 +22,9 @@ export async function currentUserId(): Promise<number | null> {
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   return Number(v);
 }
-export type Me = { id: number; name: string; email: string; budget_tier: string | null; avg_outing_cost: number | null; max_distance_mi: number; interests: string[]; nessie_account_id: string | null };
+export type Me = { id: number; name: string; email: string; budget_tier: string | null; avg_outing_cost: number | null; max_distance_mi: number; interests: string[]; nessie_account_id: string | null; avatar: string | null };
 export async function currentUser(): Promise<Me | null> {
   const id = await currentUserId();
   if (!id) return null;
-  return q1<Me>("select id,name,email,budget_tier,avg_outing_cost::float,max_distance_mi,interests,nessie_account_id from users where id=$1", [id]);
+  return q1<Me>("select id,name,email,budget_tier,avg_outing_cost::float,max_distance_mi,interests,nessie_account_id,avatar from users where id=$1", [id]);
 }

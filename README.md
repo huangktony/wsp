@@ -94,6 +94,24 @@ SSL is turned on automatically for any database that isn't on localhost. You don
 - Group screens show names, setup status and the group's lowest level. Nothing else about other members.
 - Only the group creator can lock in a plan. Payments are demo only. No money moves.
 
+## Testing on phones (same Wi-Fi)
+
+Run the built app on your laptop and open it from phones on the same Wi-Fi. No tunnels or public links.
+
+1. Build it: `npm run build`
+2. Start it on all network interfaces, with a random session secret (see the warning below):
+   ```
+   USE_MOCKS=false SESSION_SECRET="$(openssl rand -base64 32)" npx next start -H 0.0.0.0 -p 3000
+   ```
+   Leave off `USE_MOCKS=false` if you want mock data instead of live Nessie.
+3. Find your laptop's IP: `ipconfig getifaddr en0` (Wi-Fi on a Mac). It looks like `10.x.x.x` or `192.168.x.x`.
+4. On each phone, join the same Wi-Fi and open `http://<that-ip>:3000`.
+5. The first time, macOS may ask whether to allow incoming connections for `node`. Click **Allow**.
+
+Keep the laptop awake and on that Wi-Fi the whole time. If a phone cannot connect but `curl -I http://<that-ip>:3000/login` works on the laptop, the Wi-Fi is probably blocking device-to-device traffic (client isolation). Hackathon and campus Wi-Fi often does this. Try a phone hotspot that the laptop joins instead.
+
+**Warning:** `-H 0.0.0.0` lets anyone on that network reach the app. If `SESSION_SECRET` is missing, the code falls back to a default that is public in this repo, and anyone could forge a login cookie. Always set a random one, as in step 2, and stop the server when you are done testing. The app uses plain http here, so do not reuse a real password.
+
 ## Deploying to Vultr
 
 1. Create a Vultr cloud server (Ubuntu) and install Node 22.

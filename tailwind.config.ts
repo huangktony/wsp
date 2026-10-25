@@ -10,6 +10,7 @@ export default {
       colors: {
         matcha: c("matcha"),
         pistachio: c("pistachio"),
+        peach: c("peach"),
         azure: c("azure"),
         indigo: c("indigo"),
         orchid: c("orchid"),

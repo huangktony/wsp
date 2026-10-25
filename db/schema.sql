@@ -77,3 +77,5 @@ create table if not exists stop_skips (
   primary key (round_id, user_id, stop_index)
 );
 alter table payments add column if not exists transfer_id text;
+-- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
+alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));

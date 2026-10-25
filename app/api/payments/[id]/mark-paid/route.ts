@@ -1,8 +1,9 @@
 import { q, q1 } from "@/lib/db";
 import { fail, json, requireUser } from "@/lib/api";
-import { sendTransfer } from "@/lib/nessie";
+import { maskKey, recordPayback } from "@/lib/nessie";
 
-// Pay back the person who paid up front. Uses a Nessie transfer when both accounts are real; otherwise demo only.
+// Pay back the person who paid up front. In live mode this records a withdrawal on your Nessie account and a deposit on theirs.
+// If recording fails, the payment goes back to 'owed' so it can never show "paid" without the bank record.
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const uid = await requireUser();
   if (typeof uid !== "number") return uid;
@@ -12,10 +13,15 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
        join users me on me.id=p.user_id left join users payer on payer.id=r.payer_id
      where p.id=$1 and p.user_id=$2`, [Number((await params).id), uid]);
   if (!p) return fail("not your payment", 403);
-  // Claim first so a double tap can't send two transfers.
+  // Claim first so a double tap can't record the payment twice.
   const claimed = await q1("update payments set status='paid' where id=$1 and status='owed' returning id", [p.id]);
   if (!claimed) return json({ ok: true });
-  const transferId = await sendTransfer(p.from_acct, p.to_acct, p.amount, `WSP: ${p.name} hangout`);
-  await q("update payments set transfer_id=$1 where id=$2", [transferId, p.id]);
+  try {
+    await recordPayback({ payId: p.id, fromAccount: p.from_acct, toAccount: p.to_acct, amount: p.amount, label: `${p.name} hangout` });
+  } catch (e: any) {
+    await q("update payments set status='owed' where id=$1", [p.id]);
+    console.error(maskKey(`recording the payment failed: ${e?.message ?? e}`));
+    return fail("Couldn't record the payment, try again", 502);
+  }
   return json({ ok: true });
 }

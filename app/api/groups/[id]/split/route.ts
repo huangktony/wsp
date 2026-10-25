@@ -1,6 +1,7 @@
 import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 import { computeSplit } from "@/lib/pipeline";
+import { maskKey, recordHangout } from "@/lib/nessie";
 
 /**
  * Screen 10 split actions on the winning plan. Body is one of:
@@ -33,6 +34,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } else if (body.action === "send") {
     if (!isPayer) return fail("only the person paying up front sends requests", 403);
     const split = (await computeSplit(round.id))!;
+    // Record the up-front payment on the payer's account first. If Nessie fails, nothing is saved and requests_sent stays false, so the payer can retry.
+    const info = await q1<any>("select p.title, u.nessie_account_id from plan_rounds r join plans p on p.id=r.winner_plan_id join users u on u.id=r.payer_id where r.id=$1", [round.id]);
+    try {
+      await recordHangout(info.nessie_account_id, round.id, info.title, split.total);
+    } catch (e: any) {
+      console.error(maskKey(`recording the up-front payment failed: ${e?.message ?? e}`));
+      return fail("Couldn't record the payment with the bank service, try again", 502);
+    }
     for (const r of split.rows) {
       if (r.user_id === uid || r.amount <= 0) continue;
       await q("insert into payments(round_id,user_id,amount) values($1,$2,$3) on conflict (round_id,user_id) do update set amount=excluded.amount, status='owed'",

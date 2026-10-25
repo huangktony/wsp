@@ -2,6 +2,7 @@
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Avatar } from "@/components/Avatar";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
@@ -13,10 +14,10 @@ const avatarColors = ["bg-matcha text-matchaink", "bg-orchid text-orchidink", "b
 const primary = `flex min-h-[54px] w-full items-center justify-center rounded-[14px] bg-matcha px-4 py-3 text-[17px] font-bold text-matchaink ${focus}`;
 
 const pill = `flex min-h-[48px] w-full items-center justify-center rounded-full px-4 py-3 text-base font-bold disabled:opacity-60 ${focus}`;
-const danger = `${pill} bg-maroon text-white`;
+const danger = `${pill} bg-maroon text-surface`;
 const quiet = `${pill} border border-outline bg-transparent text-indigo`;
 
-type Member = { id: number; name: string; setup_done: boolean; has_voted: boolean };
+type Member = { id: number; name: string; avatar?: string | null; setup_done: boolean; has_voted: boolean };
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -115,7 +116,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <ul>
             {members.map((member, index) => (
               <li key={member.id} className="flex items-center gap-3 border-b border-azure py-3 last:border-b-0">
-                <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{member.name.trim().charAt(0).toUpperCase()}</span>
+                <Avatar name={member.name} src={member.avatar} className={`h-10 w-10 text-base ${avatarColors[index % avatarColors.length]}`} />
                 <span className="min-w-0 flex-1 break-words text-base font-bold">{memberName(member)}</span>
                 <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${(open ? member.has_voted : member.setup_done) ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{open ? (member.has_voted ? "Voted" : "Not voted yet") : (member.setup_done ? "Ready" : "Setting up")}</span>
               </li>

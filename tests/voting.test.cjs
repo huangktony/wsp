@@ -211,6 +211,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     react: { ...h.react, use: p => p },
     'react/jsx-runtime': require('react/jsx-runtime'),
     'next/link': { default: 'a' },
+    '@/components/Avatar': { Avatar: 'avatar' },
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },

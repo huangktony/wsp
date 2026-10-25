@@ -79,3 +79,6 @@ create table if not exists stop_skips (
 alter table payments add column if not exists transfer_id text;
 -- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
 alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));
+
+-- Profile photo: small resized JPEG stored as a data URL (see lib/profile.ts). Null = default initial avatar.
+alter table users add column if not exists avatar text;

@@ -50,6 +50,9 @@ export async function linkAccount(name: string): Promise<{ customerId: string; a
 export async function getPurchases(accountId: string | null, days: number): Promise<Purchase[]> {
   if (live() && accountId && !accountId.startsWith("mock-")) {
     // Live: zero purchases means zero, and errors surface to the caller.
+    // Nessie answers 200 [] for purchases of an unknown account or wrong key, but 404 for the account itself,
+    // so check the account first. Otherwise a wrong account would look like someone who spent nothing.
+    await nj(`/accounts/${accountId}`);
     const rows = await nj(`/accounts/${accountId}/purchases`);
     const since = Date.now() - days * 864e5;
     return rows

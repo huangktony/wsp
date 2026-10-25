@@ -1,7 +1,7 @@
 // Nessie client. Behavior verified against the live sandbox, see scripts/nessie-probe.ts.
 import { mockPurchases } from "./mocks/data";
 import type { MerchantInfo, NessiePurchase } from "./analyze";
-import { FUN_RANGE, rng, startingBalance, type Spender } from "./profiles";
+import { planPurchases, startingBalance, type Spender } from "./profiles";
 
 const BASE = "https://api.nessieisreal.com";
 const useMock = () => process.env.USE_MOCKS === "true" || !process.env.NESSIE_API_KEY;
@@ -69,35 +69,17 @@ export async function ensureMerchants(): Promise<Map<string, { id: string; categ
   return out;
 }
 
-/** Posts ~25 purchases over the last 29 days (plus 2 cancelled). Does nothing if the account already has purchases. */
+/** Posts the planned purchases (see planPurchases). Does nothing if the account already has purchases. */
 export async function seedAccount(accountId: string, userId: number, profile: Spender): Promise<number> {
   const existing: any[] = await nj(`/accounts/${accountId}/purchases`);
   if (existing.length) return 0;
   const merchants = await ensureMerchants();
-  const all = [...merchants.entries()];
-  const fun = all.filter(([, m]) => m.category === "food" || m.category === "entertainment");
-  const other = all.filter(([, m]) => m.category !== "food" && m.category !== "entertainment");
-  const r = rng(userId * 7919 + 13);
-  const int = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
-  const [lo, hi] = FUN_RANGE[profile];
-  const day = () => new Date(Date.now() - int(0, 28) * 864e5).toISOString().slice(0, 10);
-
-  const rows: { merchant_id: string; amount: number; status: string; description: string; purchase_date: string }[] = [];
-  for (let i = 0; i < 16; i++) {
-    const [name, m] = fun[int(0, fun.length - 1)];
-    rows.push({ merchant_id: m.id, amount: int(lo, hi), status: "completed", description: name, purchase_date: day() });
-  }
-  const OTHER_RANGE: Record<string, [number, number]> = { groceries: [25, 70], transport: [8, 25], shopping: [20, 80] };
-  for (let i = 0; i < 7; i++) {
-    const [name, m] = other[int(0, other.length - 1)];
-    const [a, b] = OTHER_RANGE[m.category];
-    rows.push({ merchant_id: m.id, amount: int(a, b), status: "completed", description: name, purchase_date: day() });
-  }
-  // Cancelled purchases with big amounts, so a missing status filter would visibly change the tier.
-  for (let i = 0; i < 2; i++) {
-    const [name, m] = fun[int(0, fun.length - 1)];
-    rows.push({ merchant_id: m.id, amount: 95, status: "cancelled", description: name, purchase_date: day() });
-  }
+  const rows = planPurchases(userId, profile).map((p) => {
+    const m = merchants.get(p.merchant);
+    if (!m) throw new Error(`seed merchant missing: ${p.merchant}`);
+    const purchase_date = new Date(Date.now() - p.daysAgo * 864e5).toISOString().slice(0, 10);
+    return { merchant_id: m.id, amount: p.amount, status: p.status, description: p.merchant, purchase_date };
+  });
   for (let i = 0; i < rows.length; i += 5) {
     await Promise.all(rows.slice(i, i + 5).map((row) => nj(`/accounts/${accountId}/purchases`, { method: "POST", body: JSON.stringify({ medium: "balance", ...row }) })));
   }

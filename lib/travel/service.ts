@@ -179,7 +179,7 @@ export async function readTrip(id: number, uid: number) {
     };
   });
 }
-async function financial(m: Member): Promise<Financial> {
+export async function financial(m: Member): Promise<Financial> {
   const checkedAt = Date.now();
   if (!m.nessie_account_id) return { available: null, checkedAt, source: 'unknown' };
   if (!isLiveAccount(m.nessie_account_id)) return { available: null, checkedAt, source: 'simulated' };

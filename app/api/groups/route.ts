@@ -1,3 +1,4 @@
+import { normalizeAvailability } from "@/lib/availability";
 import { settleRound } from "@/lib/pipeline";
 import { includedVoteSql } from "@/lib/roundParticipation";
 import { z } from "zod";
@@ -35,7 +36,8 @@ export async function GET() {
   }));
 
   const rows = await q<any>(
-    `select g.id, g.name, g.city,
+    `select g.id, g.name, g.city, mm.availability my_availability,
+       (select jsonb_agg(m.availability) from memberships m where m.group_id=g.id) member_availability,
        (select count(*)::int from memberships where group_id=g.id) members,
        r.status round_status,
        r.created_at round_started_at,
@@ -61,6 +63,11 @@ export async function GET() {
     [uid],
   );
 
+  for (const row of rows) {
+    if (row.my_availability) row.can_vote = row.can_vote && normalizeAvailability(row.my_availability).length > 0;
+    if (row.member_availability) row.unset = row.member_availability.filter((a: string[]) => !normalizeAvailability(a).length).length;
+    delete row.my_availability; delete row.member_availability;
+  }
   return json(
     rows.map((r) => ({
       ...r,

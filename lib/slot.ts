@@ -1,3 +1,4 @@
+import { parseAvailability, dateObject, slotStart, minuteStamp, availabilityLabel } from "./availability";
 // Turns an availability slot like "Sat afternoon" into times. Safe on client and server.
 const DAYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -5,6 +6,8 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const PARTS: Record<string, [number, number]> = { morning: [10, 3], lunch: [12, 2], afternoon: [14, 3], evening: [18, 3], late: [21, 3] };
 
 export function parseSlot(slot: string | null | undefined) {
+  const exact = parseAvailability(slot ?? "");
+  if (exact) { const day = dateObject(exact.date).getUTCDay(); return { day, dayName: DAY_NAMES[day], part: exact.block, start: exact.planStart / 60, hours: (exact.end-exact.planStart)/60 }; }
   const [d = "sat", p = "evening"] = (slot ?? "Sat evening").toLowerCase().split(/\s+/);
   const day = DAYS[d.slice(0, 3)] ?? 6;
   const [start, hours] = PARTS[p] ?? PARTS.evening;
@@ -25,6 +28,8 @@ export function fmtTime(mins: number) {
 
 /** Next date (on or after `from`) that falls on the slot's weekday, with start and end times. */
 export function slotDate(slot: string, from: Date | string = new Date()) {
+  const exact = parseAvailability(slot);
+  if (exact) { const start = new Date(slotStart(slot)); return { start, end: new Date(minuteStamp(exact.date,exact.end)) }; }
   const { day, start, hours } = parseSlot(slot);
   const d = new Date(from);
   d.setHours(start, 0, 0, 0);
@@ -35,6 +40,7 @@ export function slotDate(slot: string, from: Date | string = new Date()) {
 
 /** "Saturday, Oct 31 · 2:00 PM–5:00 PM" */
 export function slotLabel(slot: string, from?: Date | string) {
+  if (parseAvailability(slot)) return availabilityLabel(slot);
   const { start, end } = slotDate(slot, from);
   const date = start.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const t = (x: Date) => fmtTime(x.getHours() * 60 + x.getMinutes());

@@ -6,7 +6,8 @@ const ts = require('typescript');
 function load(file, mocks = {}) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
-    exports, require(name) { if (name in mocks) return mocks[name]; throw Error(`Unmocked import: ${name}`); },
+    exports, require(name) { if (name in mocks) return mocks[name];
+      if (name === './availability' || name === '@/lib/availability') return require('../lib/availability.ts'); throw Error(`Unmocked import: ${name}`); },
   });
   return exports;
 }

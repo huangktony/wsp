@@ -1,3 +1,4 @@
+import { chooseTime } from "./availability";
 /** Compare saved city labels without treating whitespace/case edits as a new location. */
 export const sameCity = (a: string | null | undefined, b: string | null | undefined) =>
   !!a?.trim() && !!b?.trim() && a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -32,10 +33,8 @@ export function shouldFindPlans(group: { me?: number; members: { id?: number; se
 }
 
 export function bestSlot(avails: string[][]): { slot: string; free: number } {
-  const count = new Map<string, number>();
-  for (const a of avails) for (const s of a) count.set(s, (count.get(s) ?? 0) + 1);
-  const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
-  return top ? { slot: top[0], free: top[1] } : { slot: "Sat evening", free: avails.length };
+  const chosen = chooseTime(avails.map(availability => ({ availability })));
+  return { slot: chosen?.slot ?? "", free: chosen?.free ?? 0 };
 }
 
 

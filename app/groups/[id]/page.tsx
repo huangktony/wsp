@@ -1,4 +1,6 @@
 "use client";
+import { availabilityLabel } from "@/lib/availability";
+import { TimeNotice } from "@/components/TimeNotice";
 import { InclusionBanner, RerunPlans } from "@/components/RoundInclusion";
 import { groupHomeRedirect, groupHomeAction, mySetupDone, setupButtonLabel, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
@@ -156,6 +158,8 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           </div>
         </Skeleton>
       )) : <>
+        {g.finding?.slot && <p className="text-sm text-secondary">{availabilityLabel(g.finding.slot)}</p>}
+        <TimeNotice match={g.finding?.timeMatch} />
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="text-[15px] font-bold">{ready} of {total} {open ? "voted" : "ready"} <span className="text-[13px] font-normal text-secondary">· {phase}</span></span>

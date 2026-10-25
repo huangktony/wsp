@@ -12,6 +12,7 @@ function load(file, mocks) {
   vm.runInNewContext(source, {
     exports,
     require: (name) => {
+      if (name === '@/lib/availability') return require('../lib/availability.ts');
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
       if (name === 'zod') return require('zod');

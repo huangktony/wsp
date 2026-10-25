@@ -10,6 +10,9 @@ function load(file, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText, { exports, process: { env: {} }, require(name) {
     if (name in mocks) return mocks[name];
+      if (name === './availability' || name === '@/lib/availability') return require('../lib/availability.ts');
+      if (name === './venueAvoids') return load('lib/venueAvoids.ts', { './setupPreferences': load('lib/setupPreferences.ts', { zod: require('zod') }) });
+      if (name === './setupPreferences' || name === '@/lib/setupPreferences') return load('lib/setupPreferences.ts', { zod: require('zod') });
       if (name === './voting' || name === '@/lib/voting') return load('lib/voting.ts', {
         '@/lib/db': mocks['./db'] ?? mocks['@/lib/db'],
         './roundParticipation': load('lib/roundParticipation.ts'),

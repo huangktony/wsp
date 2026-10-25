@@ -1,6 +1,7 @@
 // Pure comfort-level rules (no I/O): what a member's level is for a group, what the group's cap is, what the setup screen says.
 import { z } from "zod";
-import { SLOTS } from "./constants";
+import { SetupPreferences } from "./setupPreferences";
+import { editableAvailability, selectableDay } from "./availability";
 import { rank } from "./price";
 import { isTier, lowestTier, type Tier } from "./tiers";
 
@@ -18,10 +19,11 @@ export function groupTierFrom(members: { comfort_tier: string | null; budget_tie
 /** PUT /api/groups/[id]/me. comfort_tier is optional: absent leaves the pick alone, null clears it. */
 export const ComfortPick = z.enum(["$", "$$", "$$$"]).nullable();
 export const MeBody = z.object({
-  availability: z.array(z.enum(SLOTS)).min(1), // setup can't be skipped: at least one free time
+  availability: z.array(z.string()).max(124).transform(v => editableAvailability(v)).refine(v => v.length > 0 && v.every(s => selectableDay(s.split(" ")[0]))), // setup can't be skipped: at least one free time
   interests: z.array(z.string()).max(12),
   max_distance_mi: z.number().int().min(1).max(100),
   comfort_tier: ComfortPick.optional(),
+  preferences: SetupPreferences.optional(),
 });
 
 export type CaptionKind = "none" | "same" | "lower" | "higher";

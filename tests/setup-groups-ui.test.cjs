@@ -10,9 +10,11 @@ function load(file, mocks = {}) {
   } }).outputText;
   vm.runInNewContext(code, { exports, URLSearchParams, require(name) {
     if (name in mocks) return mocks[name];
+      if (name === './availability' || name === '@/lib/availability') return require('../lib/availability.ts');
+      if (name === '@/components/TimeNotice') return { TimeNotice: 'time-notice' };
+      if (name === './setupPreferences' || name === '@/lib/setupPreferences') return load('lib/setupPreferences.ts', { zod: require('zod') });
     if (name === 'react/jsx-runtime') return require(name);
     if (name === '@/lib/finding') return load('lib/finding.ts');
-    if (name === '@/lib/groupStories') return load('lib/groupStories.ts');
     if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts');
     if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };
     throw Error(`Unmocked import: ${name}`);
@@ -55,12 +57,10 @@ for (const [label, data, ids] of [
     assert.match(row.props.className, /snap-mandatory/);
     for (const card of cards) assert.match(card.props.className, /snap-start/);
   }
-  const actions = nodes(tree).find(n => n.props?.['aria-label'] === 'Needs action');
-  assert.equal(!!actions, ids.length > 0);
-  assert.equal(text(tree).includes('Needs Action'), ids.length > 0);
-  if (actions) {
-    assert.equal(nodes(actions).filter(n => n.type === 'a').length, ids.length);
-    assert.ok(!nodes(actions).some(n => n.props?.href === '/groups/new'));
+  assert.ok(!text(tree).includes('Needs Action'));
+  for (const card of cards) {
+    assert.match(card.props.className, /bg-pistachio/);
+    assert.ok(nodes(card).some(n => n.props?.className?.includes('bg-matcha')));
   }
   const content = nodes(tree).find(n => n.props?.className === 'flex flex-col gap-4 px-6');
   for (const g of data) {
@@ -142,4 +142,14 @@ test('failed plans show the provider error and a keyboard-accessible retry inste
   assert.match(text(tree), /Search service unavailable/);
   assert.equal(nodes(tree).find(n => n.type === 'a' && text(n) === 'Try again').props.href, '/groups/5/finding');
   assert.equal(nodes(tree).some(n => n.type === 'skeleton'), false);
+});
+
+test('voting cards sort by round date, appear once, and keep final cards white', () => {
+  const tree = groups(fixtures.map(g => ({ ...g, round_started_at: g.id === 2 ? '2026-10-26' : '2026-10-25' })));
+  const cards = nodes(tree).filter(n => n.type === 'article' && n.props.className.includes('snap-start'));
+  assert.deepEqual(cards.map(n => Number(n.key)), [2, 4]);
+  const final = nodes(tree).find(n => n.type === 'a' && n.props?.href === '/groups/5/final');
+  assert.match(final.props.className, /bg-surface/);
+  assert.equal(nodes(tree).filter(n => n.type === 'h2' && text(n) === 'Other groups').length, 1);
+  assert.ok(nodes(tree).some(n => n.props?.['aria-label'] === 'Search groups'));
 });

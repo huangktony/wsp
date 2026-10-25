@@ -21,6 +21,10 @@ function load(file, mocks = {}, globals = {}) {
     ...globals,
     require(name) {
       if (name in mocks) return mocks[name];
+      if (name === './availability' || name === '@/lib/availability') return require('../lib/availability.ts');
+      if (name === '@/components/TimeNotice') return { TimeNotice: 'time-notice' };
+      if (name === './venueAvoids') return load('lib/venueAvoids.ts', { './setupPreferences': load('lib/setupPreferences.ts', { zod: require('zod') }) });
+      if (name === './setupPreferences' || name === '@/lib/setupPreferences') return load('lib/setupPreferences.ts', { zod: require('zod') });
       if (name === './voting' || name === '@/lib/voting') return load('lib/voting.ts', {
         '@/lib/db': mocks['./db'] ?? mocks['@/lib/db'],
         './roundParticipation': load('lib/roundParticipation.ts'),
@@ -96,7 +100,7 @@ test('finding data uses actual member preferences and includes failed state with
   });
   const result = await data.getFindingDetails(5, 'Test city');
   assert.equal(result.memberCount, 2);
-  assert.equal(result.slot, 'Sun afternoon');
+  assert.equal(result.slot, require('../lib/availability.ts').chooseTime([{availability:['Sun afternoon']}]).slot);
   assert.equal(result.maxDistanceMi, 5);
   assert.equal(result.round.status, 'failed');
   assert.equal(result.members, undefined);
@@ -1165,7 +1169,11 @@ test('redraw snapshots current city/preferences, and failure restores final only
   assert.equal(inserted[4], 5);
   assert.equal(inserted[5], false);
   assert.equal(inserted[6], '$');
-  assert.deepEqual(JSON.parse(inserted[7]), JSON.parse(JSON.stringify(settingsModule.roundSettings(searchMembers))));
+  const savedSettings = JSON.parse(inserted[7]);
+  assert.equal(savedSettings[0].time_match.slot, inserted[8]);
+  assert.equal(savedSettings[0].time_match.free, 1);
+  delete savedSettings[0].time_match;
+  assert.deepEqual(savedSettings, JSON.parse(JSON.stringify(settingsModule.roundSettings(searchMembers))));
   assert.deepEqual(Array.from(inserted[2]), ['Old cafe']);
   latest.status = 'failed'; cleared = false;
   await undoRedraw(10, 11);
@@ -1289,4 +1297,39 @@ test('setup label and current-member guard ignore other members who are still se
   const allowed = flowFixture([complete]);
   await allowed.run();
   assert.ok(allowed.events.some(([event]) => event === 'ready'));
+});
+test('Gemini context uses only included preferences, excludes earlier venues, and persists provenance', async () => {
+  const inserted = [];
+  const snapshot = [
+    { user_id: 1, included: true, availability: ['Sat afternoon'], interests: ['creative'], comfort_tier: '$', preferences: { interests_text: 'art', avoids_text: 'crowds', avoids: ['nightlife'] } },
+    { user_id: 2, included: false, availability: ['Sat evening'], interests: ['nightlife'], preferences: { interests_text: 'private excluded preference' } },
+  ];
+  const { fillRound } = load('lib/pipeline.ts', {
+    './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'),
+    './voting': {}, './votingRules': load('lib/votingRules.ts'),
+    './tier': {}, './price': { planLevel: () => '$' },
+    './serpapi': { categoriesFor: x => x, MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} },
+    './db': {
+      q1: async () => ({ id: 10, group_id: 5, group_tier: '$', search_settings: snapshot, search_city: 'Austin, TX', current_city: 'Austin, TX', search_distance_mi: 5, excluded: [] }),
+      q: async (sql, args) => {
+        if (sql.startsWith('select distinct')) return [{ place: 'Old cafe' }];
+        if (sql.startsWith('insert into plans')) inserted.push(args);
+        return [];
+      },
+    },
+    './gemini': { generatePlans: async context => {
+      assert.equal(context.roundId, 10);
+      assert.equal(context.preferences.length, 1);
+      assert.equal(context.preferences[0].interests_text, 'art');
+      assert.equal(context.slot, require('../lib/availability.ts').chooseTime([{availability:['Sat afternoon']}]).slot);
+      assert.equal(context.places.length, 3);
+      assert.ok(context.places.every(p => p.name !== 'Old cafe' && p.name !== 'A bar'));
+      assert.deepEqual(Array.from(context.avoidTags), ['nightlife']);
+      assert.ok(!JSON.stringify(context.preferences).includes('user_id'));
+      return context.places.map(p => ({ title: p.name, summary: '', stops: [{ place: p.name, time: '2:00 PM' }], est_cost_per_person: p.cost, why_fits: 'Art.', generated_by: 'gemini' }));
+    } },
+  });
+  await fillRound(10, async (_cats, _city, _tier, _distance, options) => { assert.equal(options.timeWindow.start,720); assert.equal(options.timeWindow.end,1020); assert.equal(options.timeWindow.planStart,720); assert.match(options.timeWindow.date, /^\d{4}-\d{2}-\d{2}$/); return ['Old cafe', 'Gallery', 'Park', 'Museum', 'A bar'].map(name => ({ name, type: name === 'A bar' ? 'Bar' : '', category: 'creative', price: '$', cost: 5 })); });
+  assert.equal(inserted.length, 3);
+  for (const args of inserted) assert.equal(JSON.parse(args[3])[0].generated_by, 'gemini');
 });

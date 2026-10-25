@@ -1,4 +1,5 @@
 "use client";
+import { TimeNotice } from "@/components/TimeNotice";
 import { InclusionBanner } from "@/components/RoundInclusion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -96,6 +97,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
       {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       <InclusionBanner inclusion={data.inclusion} />
+      <TimeNotice match={round.time_match} />
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>
@@ -110,6 +112,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       )}
 
       <h2 className={`${sent ? "" : "mt-2"} font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo`}>{plan.title}</h2>
+      {plan.generated_by === "gemini" && <p className="mt-1 text-xs font-semibold text-secondary">Picked by Gemini</p>}
       <p className="mb-4 text-[15px] text-secondary">{slotLabel(round.slot, round.created_at)}</p>
 
       {/* Itinerary */}

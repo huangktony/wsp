@@ -94,3 +94,10 @@ test('theme choice persists across reloads and is applied to the page', () => {
   theme.setThemePref('light');
   assert.equal(boot().getThemePref(), 'light');
 });
+
+test('avatar shows first and last initials', () => {
+  const { initials } = load('components/Avatar.tsx', { 'react/jsx-runtime': require('react/jsx-runtime') });
+  assert.equal(initials('Demo Dana'), 'DD');
+  assert.equal(initials('  sam  '), 'S');
+  assert.equal(initials('Mary Ann Lee'), 'ML');
+});

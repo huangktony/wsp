@@ -18,7 +18,7 @@ export function TabBar() {
   const addHref = isTravel ? "/travel/new" : "/groups/new";
   const addLabel = isTravel ? "New trip" : "New group";
   // The floating + sits above the bar on the main tab screens only, not on group, trip or form pages.
-  const showAdd = ["/groups", "/travel", "/spending", "/profile", "/settings"].includes(path);
+  const showAdd = ["/groups", "/travel", "/spending", "/profile"].includes(path);
 
   return (
     <>

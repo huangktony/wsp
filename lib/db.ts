@@ -9,7 +9,8 @@ const local = /@(localhost|127\.0\.0\.1)[:/]|^postgres(ql)?:\/\/(localhost|127\.
 // TODO(decision): pin the provider's CA certificate instead of rejectUnauthorized: false.
 const url = local ? raw : raw.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
 
-export const pool = g._pool ?? new Pool({ connectionString: url, ssl: local ? undefined : { rejectUnauthorized: false } });
+// connectionTimeoutMillis: fail with an error after 8s instead of hanging forever when the database can't be reached.
+export const pool = g._pool ?? new Pool({ connectionString: url, ssl: local ? undefined : { rejectUnauthorized: false }, connectionTimeoutMillis: 8000 });
 if (process.env.NODE_ENV !== "production") g._pool = pool;
 
 export async function q<T = any>(text: string, params: unknown[] = []): Promise<T[]> {

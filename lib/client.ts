@@ -1,8 +1,8 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export async function api<T = any>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(path, { method, cache: "no-store", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
   if (!res.ok) throw new Error(data.error ?? "something went wrong");
@@ -12,12 +12,29 @@ export async function api<T = any>(path: string, method = "GET", body?: unknown)
 export function useApi<T = any>(path: string, pollMs = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
-  const load = useCallback(() => api<T>(path).then((d) => { setData(d); setError(""); }).catch((e) => setError(e.message)), [path]);
+  const requestId = useRef(0);
+  const load = useCallback(async () => {
+    const current = ++requestId.current;
+    try {
+      const d = await api<T>(path);
+      if (current === requestId.current) { setData(d); setError(""); }
+      return d;
+    } catch (e: any) {
+      if (current === requestId.current) setError(e.message);
+    }
+  }, [path]);
   useEffect(() => {
     load();
-    if (!pollMs) return;
-    const t = setInterval(load, pollMs);
-    return () => clearInterval(t);
+    const refresh = () => { if (document.visibilityState === "visible") void load(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const t = pollMs ? setInterval(load, pollMs) : undefined;
+    return () => {
+      requestId.current++;
+      if (t) clearInterval(t);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [load, pollMs]);
   return { data, error, reload: load };
 }

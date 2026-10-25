@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -30,11 +30,7 @@ export default function NewGroup() {
   return (
     <Page variant="plain">
       <div className={`${inter.className} flex min-h-[100svh] flex-col gap-[18px] bg-white px-6 pb-[132px] pt-6 text-indigo`}>
-        <Link href="/groups" aria-label="Back" className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pistachio ${focus}`}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-        </Link>
+        <BackButton href="/groups" className="mb-2" />
         <h1 className="font-[inherit] text-[36px] font-extrabold leading-[1.05] tracking-[-1.4px]">Start a group</h1>
         <div className="flex flex-col gap-3">
           <input type="text" aria-label="Group name" aria-describedby={err && action === "create" ? "create-error" : undefined} className={input} placeholder="Group name" value={name} onChange={(e) => setName(e.target.value)} />

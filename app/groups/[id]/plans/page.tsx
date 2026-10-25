@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
@@ -20,7 +20,28 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 3000);
   const [err, setErr] = useState("");
   const [mine, setMine] = useState<Record<number, Vote>>({}); // optimistic votes
+  const savingRef = useRef(new Set<number>());
+  const [saving, setSaving] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
+
+  // Stop overriding a vote once a fresh server response confirms it. Keep an
+  // in-flight mutation's override even if an older poll arrives meanwhile.
+  useEffect(() => {
+    if (!data?.plans) return;
+    setMine((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      for (const key of Object.keys(previous)) {
+        const planId = Number(key);
+        const plan = data.plans.find((p: any) => p.id === planId);
+        if (!savingRef.current.has(planId) && (!plan || (plan.my_vote ?? null) === previous[planId])) {
+          delete next[planId];
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  }, [data, saving]);
 
   const deadline = useMemo(() => (data?.round ? Date.now() + data.round.seconds_left * 1000 : 0), [data]);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(t); }, []);
@@ -36,15 +57,21 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
 
   const voteOf = (p: any): Vote => (p.id in mine ? mine[p.id] : p.my_vote ?? null);
   const vote = (p: any, v: Exclude<Vote, null>) => {
+    if (savingRef.current.has(p.id)) return;
     const next = voteOf(p) === v ? null : v; // tap again to undo
+    savingRef.current.add(p.id);
+    setSaving([...savingRef.current]);
     setMine((m) => ({ ...m, [p.id]: next }));
     setErr("");
     api(`/api/plans/${p.id}/vote`, "POST", { value: next })
       .then(reload)
-      .catch((e) => { setErr(e.message); setMine((m) => { const { [p.id]: _, ...rest } = m; return rest; }); });
+      .catch((e) => { setErr(e.message); setMine((m) => { const { [p.id]: _, ...rest } = m; return rest; }); })
+      .finally(() => { savingRef.current.delete(p.id); setSaving([...savingRef.current]); });
   };
   const close = () => api(`/api/groups/${id}/final`, "POST").then(reload).catch((e) => setErr(e.message));
   const myCount = data.plans.filter((p: any) => voteOf(p)).length;
+  const serverHasMyVote = data.plans.some((p: any) => p.my_vote != null);
+  const voted = Math.max(0, Math.min(data.memberCount, data.voted - Number(serverHasMyVote) + Number(myCount > 0)));
 
   return (
     <Page back={`/groups/${id}`}>
@@ -52,7 +79,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
       <h1 className="mb-3 text-3xl font-bold">{data.plans.length} {data.plans.length === 1 ? "plan" : "plans"} for {data.round.slot}</h1>
       <div className="mb-5 flex flex-wrap gap-2">
         <span className="chip-pink">{left(deadline - now)}</span>
-        <span className="chip">{data.voted} of {data.memberCount} voted</span>
+        <span className="chip" aria-live="polite">{voted} of {data.memberCount} have voted</span>
         <TierBadge tier={data.round.group_tier} label="Group budget" />
       </div>
 
@@ -71,9 +98,9 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
               </ol>
               <p className="text-sm"><b>Why:</b> {p.why_fits}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
+                <button disabled={saving.includes(p.id)} aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
                   className={`h-12 rounded-2xl font-semibold ${v === "approve" ? "bg-sage text-sageink" : "border border-line"}`}>✓ Approve</button>
-                <button aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
+                <button disabled={saving.includes(p.id)} aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
                   className={`h-12 rounded-2xl font-semibold ${v === "veto" ? "bg-deep text-white" : "border border-line"}`}>✕ Veto</button>
               </div>
             </article>
@@ -81,10 +108,10 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
         })}
       </div>
 
-      <Err msg={err} />
+      <Err msg={err || error} />
       <p className="mt-5 text-center text-sm text-muted">
-        {myCount < data.plans.length ? `Vote on all ${data.plans.length} to count as voted. ` : "You're done. "}
-        Votes are anonymous until the end. Voting closes at the deadline or once everyone has voted.
+        {myCount < data.plans.length ? `You've voted on ${myCount} of ${data.plans.length} plans. ` : "You're done. "}
+        Votes are anonymous until the end. Voting closes at the deadline or once everyone has voted on every plan.
       </p>
       {data.isCreator && <button className="btn-ghost mt-4" onClick={close}>Close voting now</button>}
     </Page>

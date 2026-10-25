@@ -61,7 +61,8 @@ export function SignupForm() {
     e.preventDefault();
     go(async () => {
       await api("/api/auth/signup", "POST", f);
-      if (link) await api("/api/bank/link", "POST");
+      // TODO(decision): signup links with a default profile; users cannot switch afterwards. Let them pick here too, or link later via the picker.
+      if (link) await api("/api/bank/link", "POST", { profile: "average" });
     });
   };
   return (

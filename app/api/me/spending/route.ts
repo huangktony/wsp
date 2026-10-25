@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     const view = analyze(data.purchases, data.merchants, days, new Date());
     return json({
       tier, avgOuting: avg, usedDefault, cutoffs: TIER_CUTOFFS, linked: true, days,
-      spent: view.spent, count: view.count, categories: view.categories, recent: view.recent,
+      startingBalance: data.balance, spent: view.spent, count: view.count, categories: view.categories, recent: view.recent,
     });
   } catch (e: any) {
     console.error(maskKey(`spending failed: ${e?.message ?? e}`));

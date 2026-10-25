@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
+import { LinkBank } from "@/components/LinkBank";
 import { TierBadge } from "@/components/TierBadge";
 import { api, INTERESTS, SLOTS, toggle, useApi } from "@/lib/client";
 
@@ -10,7 +11,7 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const r = useRouter();
   const { data } = useApi<any>(`/api/groups/${id}/me`);
-  const [linkedTier, setLinkedTier] = useState<string | null>(null), [linking, setLinking] = useState(false);
+  const [linkedTier, setLinkedTier] = useState<string | null>(null);
   const [av, setAv] = useState<string[]>([]), [it, setIt] = useState<string[]>([]), [mi, setMi] = useState(10), [err, setErr] = useState("");
   useEffect(() => { if (data) { setAv(data.availability); setIt(data.interests); setMi(data.max_distance_mi); } }, [data]);
   const Chip = ({ v, on, click }: { v: string; on: boolean; click: () => void }) => (
@@ -24,7 +25,7 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
         <section><span className="label">Max distance: {mi} mi</span><input type="range" min={1} max={30} value={mi} onChange={(e) => setMi(+e.target.value)} className="w-full accent-[var(--sage)]" /></section>
         <section className="card flex items-center justify-between"><span className="text-sm text-muted">Your comfort level (only you see this)</span><TierBadge tier={data?.budget_tier ?? linkedTier} /></section>
         {data && !data.budget_tier && !linkedTier && (
-          <button type="button" className="btn-ghost" disabled={linking} onClick={() => { setLinking(true); setErr(""); api("/api/bank/link", "POST").then((d) => setLinkedTier(d.tier)).catch((e) => setErr(e.message)).finally(() => setLinking(false)); }}>{linking ? "Linking…" : "Link demo bank account"}</button>
+          <LinkBank onLinked={setLinkedTier} />
         )}
         {data && !av.length && <p className="text-sm text-muted">Pick at least one time you're free.</p>}
         <Err msg={err} />

@@ -93,3 +93,5 @@ alter table payments add column if not exists paid_at timestamptz;
 alter table payments add column if not exists reminded_at timestamptz;
 alter table plan_rounds add column if not exists requests_sent_at timestamptz;
 alter table plan_rounds add column if not exists bill_total numeric;
+-- Snapshot members' search preferences at round creation (server-only; never returned to clients).
+alter table plan_rounds add column if not exists search_settings jsonb;

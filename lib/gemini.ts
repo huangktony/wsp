@@ -94,11 +94,11 @@ export function withinBudget(drafts: PlanDraft[], places: Place[], tier: string)
   return drafts.every((d) => d.stops.every((s) => { const p = byName.get(s.place.toLowerCase()); return !!p && rank(p.price) <= rank(tier); }));
 }
 
-export async function generatePlans(ctx: { city: string; slot: string; tier: string; interests: string[]; places: Place[]; avoid?: string[] }): Promise<PlanDraft[]> {
+export async function generatePlans(ctx: { city: string; slot: string; tier: string; interests: string[]; places: Place[]; maxDistanceMi?: number; avoid?: string[] }): Promise<PlanDraft[]> {
   if (!ctx.city?.trim()) throw new MissingCityError();
   if (!ctx.places.length) return [];
   if (process.env.USE_MOCKS !== "true" && process.env.GEMINI_API_KEY) {
-    const prompt = `Plan 3 distinct group hangouts in ${ctx.city} for ${ctx.slot}. Max budget tier ${ctx.tier} (never exceed). Shared interests: ${ctx.interests.join(", ") || "any"}. Use ONLY these places (price tier $=~12, $$=~25, $$$=~50 per person, "cost" is the estimated per-person cost): ${JSON.stringify(ctx.places)}. Each plan has ordered stops with times, an estimated cost per person, and why it fits (one or two sentences naming the shared time, interests or budget).${ctx.avoid?.length ? ` The group vetoed these places last time, do not use them: ${ctx.avoid.join(", ")}.` : ""}`;
+    const prompt = `Plan 3 distinct group hangouts in ${ctx.city} for ${ctx.slot}. Max budget tier ${ctx.tier} (never exceed). Requested radius ${ctx.maxDistanceMi ?? "unspecified"} miles; any explicitly disclosed radius extension is in the candidates. Shared interests: ${ctx.interests.join(", ") || "any"}. Use ONLY these places (price tier $=~12, $$=~25, $$$=~50 per person, "cost" is the estimated per-person cost): ${JSON.stringify(ctx.places)}. Each plan has ordered stops with times, an estimated cost per person, and why it fits (one or two sentences naming the shared time, interests or budget).${ctx.avoid?.length ? ` The group vetoed these places last time, do not use them: ${ctx.avoid.join(", ")}.` : ""}`;
     for (let i = 0; i < 2; i++) {
       try {
         const drafts = await callGemini(prompt);

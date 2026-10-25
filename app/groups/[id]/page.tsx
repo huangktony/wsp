@@ -127,6 +127,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
+          {g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
           {open && !needsNewSearch && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
           {(!open || needsNewSearch) && <Link href={`/groups/${id}/finding${final || needsNewSearch ? "?new=1" : ""}`} className={primary}>{final || needsNewSearch ? "Find new plans" : "Find plans"}</Link>}

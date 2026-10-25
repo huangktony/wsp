@@ -1,3 +1,4 @@
+import { roundSettings, searchPreferences, settingsChanged } from "./roundSettings";
 import { bestSlot, resolveRoundCity, sameCity } from "./finding";
 export { bestSlot } from "./finding";
 import { pool, q, q1 } from "./db";
@@ -25,8 +26,8 @@ export class SearchSchemaPendingError extends Error {
 async function hasSearchMetadata(query: (sql: string, args: unknown[]) => Promise<{ rows: any[] }>) {
   const result = await query(
     "select count(*)::int count from information_schema.columns where table_schema=current_schema() and table_name='plan_rounds' and column_name=any($1::text[])",
-    [["search_city", "search_distance_mi", "sample_places", "search_error"]]);
-  return result.rows[0]?.count === 4;
+    [["search_city", "search_distance_mi", "sample_places", "search_error", "search_settings"]]);
+  return result.rows[0]?.count === 5;
 }
 
 /**
@@ -41,11 +42,14 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     const group = (await c.query("select city from groups where id=$1 for share", [groupId])).rows[0];
     const city = group?.city?.trim();
     if (!city) throw new MissingCityError();
+    const members = (await c.query("select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id", [groupId])).rows;
+    const settings = roundSettings(members);
+    const preferences = searchPreferences(settings);
     const sample = process.env.USE_SAMPLE_PLACES === "true";
     // A round stuck in generating for 2+ minutes crashed. Mark it failed so a new one can start.
     await c.query("update plan_rounds set status='failed' where group_id=$1 and status='generating' and created_at < now() - interval '2 minutes'", [groupId]);
-    const last = (await c.query("select id,status,attempt,excluded,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
-    if (last && sameCity(resolveRoundCity(last).city, city) && (last.sample_places ?? false) === sample && (last.status === "generating" || last.status === "voting")) {
+    const last = (await c.query("select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
+    if (last && !settingsChanged(last.search_settings, settings) && sameCity(resolveRoundCity(last).city, city) && (last.sample_places ?? false) === sample && (last.status === "generating" || last.status === "voting")) {
       await c.query("commit");
       return { roundId: last.id, status: last.status, created: false };
     }
@@ -54,9 +58,8 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     const excluded: string[] = vetoed ? last.excluded : [];
     const attempt = vetoed ? last.attempt + 1 : 1;
     if (!(await hasSearchMetadata((sql, args) => c.query(sql, args)))) throw new SearchSchemaPendingError();
-    const preferences = (await c.query("select min(u.max_distance_mi)::int distance from memberships m join users u on u.id=m.user_id where m.group_id=$1", [groupId])).rows[0];
     if (!preferences?.distance) throw new Error("No group distance preference available");
-    const r = await c.query("insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places) values($1,'generating',$2,$3,$4,$5,$6) returning id", [groupId, attempt, excluded, city, preferences.distance, sample]);
+    const r = await c.query("insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id", [groupId, attempt, excluded, city, preferences.distance, sample, preferences.tier, JSON.stringify(settings)]);
     await c.query("commit");
     return { roundId: r.rows[0].id, status: "generating", created: true };
   } catch (e) {
@@ -70,18 +73,18 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
 /** Runs the engine for a claimed round: shared slot -> group tier -> places -> 3 plans -> open voting. */
 export async function fillRound(roundId: number, find: typeof findPlaces = findPlaces): Promise<void> {
   try {
-    const round = await q1<any>(`select r.id,r.group_id,r.excluded,to_jsonb(r)->>'search_city' search_city,
+    const round = await q1<any>(`select r.id,r.group_id,r.excluded,r.group_tier,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,
       coalesce((to_jsonb(r)->>'search_distance_mi')::int,
-        (select min(u.max_distance_mi)::int from memberships m join users u on u.id=m.user_id where m.group_id=r.group_id)) search_distance_mi,
+        (select min(u.max_distance_mi)::int from memberships m join users u on u.id=m.user_id where m.group_id=r.group_id and jsonb_array_length(m.availability)>0)) search_distance_mi,
       (to_jsonb(r)->>'sample_places')::boolean sample_places,g.city current_city,g.lat,g.lng,g.vote_hours
       from plan_rounds r join groups g on g.id=r.group_id where r.id=$1`, [roundId]);
     const { city, coords } = resolveRoundCity(round, { city: round.current_city, lat: round.lat, lng: round.lng });
-    const members = await q<any>("select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1", [round.group_id]);
+    const members: { availability: string[]; interests: string[] }[] = round.search_settings ?? await q<any>("select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1", [round.group_id]);
     // Members who haven't finished setup don't drag the slot or interests down.
     const ready = members.filter((m) => (m.availability as string[]).length);
     const basis = ready.length ? ready : members;
     const { slot, free } = bestSlot(basis.map((m) => m.availability as string[]));
-    const tier = await groupTier(round.group_id);
+    const tier = round.group_tier ?? await groupTier(round.group_id);
     const sets = basis.map((m) => m.interests as string[]);
     const shared = sets.length ? sets[0].filter((i) => sets.every((s) => s.includes(i))) : [];
     const interests = shared.length ? shared : [...new Set(sets.flat())];
@@ -91,7 +94,7 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
     const fresh = found.filter((p) => !excluded.has(p.name));
     // If leaving out vetoed places empties the list, reuse them rather than show nothing.
     const places = fresh.length >= 2 ? fresh : found;
-    const drafts = await generatePlans({ city, slot, tier, interests, places, avoid: [...excluded] });
+    const drafts = await generatePlans({ city, slot, tier, interests, places, maxDistanceMi: round.search_distance_mi, avoid: [...excluded] });
     if (!drafts.length) throw new NoPlacesError(`No places found within the ${tier} budget near ${city}. Try more interests or a bigger distance.`);
 
     const byName = new Map(places.map((p) => [p.name.toLowerCase(), p] as [string, Place]));
@@ -100,10 +103,15 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       // One definition: the cost is the sum of the stop costs, the level is the most expensive stop.
       const total = stops.reduce((s, x) => s + x.cost, 0);
       const price = planLevel(stops);
-      const why = free < basis.length ? `${d.why_fits} ${free} of ${basis.length} are free ${slot}.` : d.why_fits;
+      const radiusNote = found.find(p => p.radiusNote)?.radiusNote;
+      const baseWhy = radiusNote ? `${d.why_fits} ${radiusNote}` : d.why_fits;
+      const why = free < basis.length ? `${baseWhy} ${free} of ${basis.length} are free ${slot}.` : baseWhy;
       await q("insert into plans(round_id,title,summary,stops,est_cost_per_person,price_level,why_fits) values($1,$2,$3,$4,$5,$6,$7)",
         [roundId, d.title, d.summary, JSON.stringify(stops), total, price, why]);
     }
+    // Preserve the actual radius used for the Finding screen; requested settings remain in the snapshot.
+    const usedRadius = Math.max(round.search_distance_mi, ...found.map(p => p.searchRadiusMi ?? 0));
+    if (round.search_settings) await q("update plan_rounds set search_distance_mi=$2 where id=$1", [roundId, usedRadius]);
     const hours = round.vote_hours ?? 24;
     await q("update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1", [roundId, slot, tier, hours]);
   } catch (e) {

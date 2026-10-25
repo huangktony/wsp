@@ -16,6 +16,8 @@ function load(file, mocks = {}, globals = {}) {
   return exports;
 }
 const finding = load('lib/finding.ts');
+const settingsModule = load('lib/roundSettings.ts', { './tiers': load('lib/tiers.ts') });
+const searchMembers = [{ user_id: 1, availability: ['Sun afternoon'], interests: ['coffee'], max_distance_mi: 5, comfort_tier: '$', budget_tier: '$$' }];
 const group = (status = null, planCount = 0) => ({ groupTier: '$', members: [{ setup_done: true }, { setup_done: true }],
   finding: { round: status ? { id: 10, status } : null, memberCount: 2, planCount, slot: 'Sun afternoon', maxDistanceMi: 5 } });
 
@@ -32,7 +34,7 @@ test('automatic trigger requires all current members; follows in-progress and fa
 });
 
 test('finding data uses actual member preferences and includes failed state without exposing individual data', async () => {
-  const data = load('lib/findingData.ts', { './finding': finding, '@/lib/db': {
+  const data = load('lib/findingData.ts', { './roundSettings': settingsModule, './finding': finding, '@/lib/db': {
     q: async () => [{ availability: ['Sun afternoon'], max_distance_mi: 9 }, { availability: ['Sun afternoon'], max_distance_mi: 5 }],
     q1: async () => ({ id: 10, status: 'failed', slot: null, group_tier: null, plan_count: 0 }),
   } });
@@ -100,16 +102,16 @@ test('server advisory lock gives simultaneous callers one generation owner and r
     return { release() {}, query: async sql => {
       if (sql.includes('pg_advisory_xact_lock')) { const before = gate; gate = new Promise(resolve => unlock = resolve); await before; }
       else if (sql.startsWith('select city from groups')) return { rows: [{ city: 'Test city' }] };
-      else if (sql.includes('information_schema.columns')) return { rows: [{ count: 4 }] };
-      else if (sql.startsWith('select min(u.max_distance_mi)')) return { rows: [{ distance: 10 }] };
+      else if (sql.includes('information_schema.columns')) return { rows: [{ count: 5 }] };
+      else if (sql.startsWith('select m.user_id')) return { rows: searchMembers };
       else if (sql.startsWith('select id,status,attempt')) return { rows: last ? [last] : [] };
-      else if (sql.startsWith('insert into plan_rounds')) { inserts++; last = { id: inserts, status: 'generating', search_city: 'Test city', sample_places: false }; return { rows: [last] }; }
+      else if (sql.startsWith('insert into plan_rounds')) { inserts++; last = { id: inserts, status: 'generating', search_city: 'Test city', sample_places: false, search_settings: searchMembers }; return { rows: [last] }; }
       else if (sql === 'commit' || sql === 'rollback') unlock?.();
       return { rows: [] };
     } };
   } };
   const { startRound } = load('lib/pipeline.ts', {
-    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './db': { pool }, './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
   });
   const claims = await Promise.all([startRound(5), startRound(5)]);
   assert.equal(inserts, 1);
@@ -293,16 +295,16 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
   class MissingCityError extends Error {}
   const pool = { connect: async () => ({ release() {}, query: async (sql, args) => {
     if (sql.startsWith('select city')) return { rows: [{ city }] };
-    if (sql.includes('information_schema.columns')) return { rows: [{ count: 4 }] };
-    if (sql.startsWith('select min')) return { rows: [{ distance: 5 }] };
+    if (sql.includes('information_schema.columns')) return { rows: [{ count: 5 }] };
+    if (sql.startsWith('select m.user_id')) return { rows: searchMembers };
     if (sql.startsWith('select id,status')) return { rows: last ? [last] : [] };
     if (sql.startsWith('insert into plan_rounds')) {
-      last = { id: ++inserts, status: 'generating', search_city: args[3], search_distance_mi: args[4], sample_places: args[5] };
+      last = { id: ++inserts, status: 'generating', search_city: args[3], search_distance_mi: args[4], sample_places: args[5], search_settings: JSON.parse(args[7]), group_tier: args[6] };
       return { rows: [last] };
     }
     return { rows: [] };
   } }) };
-  const { startRound } = load('lib/pipeline.ts', { './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': { MissingCityError }, './price': {}, './gemini': {} });
+  const { startRound } = load('lib/pipeline.ts', { './db': { pool }, './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': { MissingCityError }, './price': {}, './gemini': {} });
   assert.equal((await startRound(5)).created, true);
   assert.equal(last.search_city, 'Houston, TX');
   assert.equal(last.search_distance_mi, 5);
@@ -320,7 +322,7 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
 test('generation uses the round snapshot for search and prompt, not later group edits', async () => {
   const calls = [];
   const { fillRound } = load('lib/pipeline.ts', {
-    './finding': finding, './split': load('lib/split.ts'),
+    './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'),
     './db': {
       q1: async sql => { assert.ok(sql.includes("to_jsonb(r)->>'search_city' search_city")); assert.ok(sql.includes('g.city current_city')); return { group_id: 5, search_city: 'Dallas, TX', current_city: 'Seattle, WA', lat: 47.6062, lng: -122.3321, search_distance_mi: 5, sample_places: false }; },
       q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
@@ -349,7 +351,7 @@ test('changed-city rounds are replaced instead of immediately showing old plans 
 
 
 test('legacy metadata reads use optional JSON fields and fall back without hiding database errors', async () => {
-  const data = load('lib/findingData.ts', { './finding': finding, '@/lib/db': {
+  const data = load('lib/findingData.ts', { './roundSettings': settingsModule, './finding': finding, '@/lib/db': {
     q: async () => [{ availability: ['Sun afternoon'], max_distance_mi: 8 }],
     q1: async sql => {
       for (const key of ['search_city', 'sample_places', 'search_error', 'search_distance_mi']) {
@@ -364,13 +366,13 @@ test('legacy metadata reads use optional JSON fields and fall back without hidin
   assert.equal(result.round.search_city, 'Austin, TX');
   assert.equal(result.maxDistanceMi, 8);
   assert.equal(result.needsNewSearch, true);
-  const broken = load('lib/findingData.ts', { './finding': finding, '@/lib/db': {
+  const broken = load('lib/findingData.ts', { './roundSettings': settingsModule, './finding': finding, '@/lib/db': {
     q: async () => [], q1: async () => { throw Error('database unavailable'); },
   } });
   await assert.rejects(broken.getFindingDetails(1, 'Houston, TX'), /database unavailable/);
 });
 
-test('pending migration keeps legacy voting rounds usable and rejects new rounds before insertion', async () => {
+test('pending migration rejects regenerating untracked legacy rounds before insertion', async () => {
   let last = { id: 1, status: 'voting', search_city: null, sample_places: null };
   const statements = [];
   const pool = { connect: async () => ({ release() {}, query: async sql => {
@@ -381,9 +383,9 @@ test('pending migration keeps legacy voting rounds usable and rejects new rounds
     return { rows: [] };
   } }) };
   const { startRound, SearchSchemaPendingError } = load('lib/pipeline.ts', {
-    './db': { pool }, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './db': { pool }, './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
   });
-  assert.equal((await startRound(5)).created, false);
+  await assert.rejects(startRound(5), SearchSchemaPendingError);
   last = null;
   await assert.rejects(startRound(5), SearchSchemaPendingError);
   assert.equal(statements.some(sql => sql.startsWith('insert')), false);
@@ -409,7 +411,7 @@ test('legacy generation passes Austin coordinates and city to search and plan wr
   for (const snapshot of [{ search_city: null }, {}]) {
     let promptCity;
     const { fillRound } = load('lib/pipeline.ts', {
-      './finding': finding, './split': load('lib/split.ts'),
+      './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'),
       './db': {
         q1: async () => ({ ...snapshot, group_id: 5, current_city: 'Houston, TX', lat: 29.7604, lng: -95.3698, search_distance_mi: 5 }),
         q: async sql => sql.startsWith('select m.availability') ? [{ availability: ['Sun afternoon'], interests: ['coffee'] }] : [],
@@ -467,4 +469,73 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
   const response = await POST({}, { params: Promise.resolve({ id: '5' }) });
   assert.equal(response.status, 409);
   assert.equal(response.error, 'finish your setup first');
+});
+
+test('editing any search setting creates a fresh round with current Houston distance and tier', async () => {
+  let members = JSON.parse(JSON.stringify(searchMembers)), last = null, inserts = 0;
+  const pool = { connect: async () => ({ release() {}, query: async (sql, args) => {
+    if (sql.startsWith('select city')) return { rows: [{ city: 'Houston, TX' }] };
+    if (sql.startsWith('select m.user_id')) return { rows: members };
+    if (sql.includes('information_schema.columns')) return { rows: [{ count: 5 }] };
+    if (sql.startsWith('select id,status')) return { rows: last ? [last] : [] };
+    if (sql.startsWith('insert into plan_rounds')) {
+      last = { id: ++inserts, status: 'voting', search_city: args[3], search_distance_mi: args[4], sample_places: args[5], group_tier: args[6], search_settings: JSON.parse(args[7]) };
+      return { rows: [last] };
+    }
+    return { rows: [] };
+  } }) };
+  const { startRound } = load('lib/pipeline.ts', {
+    './roundSettings': settingsModule, './db': { pool }, './finding': finding, './split': load('lib/split.ts'),
+    './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+  });
+  await startRound(5);
+  assert.equal((await startRound(5)).created, false);
+  for (const edit of [{ max_distance_mi: 15 }, { comfort_tier: '$$$' }, { interests: ['outdoors'] }, { availability: ['Fri evening'] }]) {
+    members = members.map(m => ({ ...m, ...edit }));
+    assert.equal((await startRound(5)).created, true);
+    assert.equal((await startRound(5)).created, false);
+  }
+  assert.equal(inserts, 5);
+  assert.equal(last.search_city, 'Houston, TX');
+  assert.equal(last.search_distance_mi, 15);
+  assert.equal(last.group_tier, '$$$');
+});
+
+test('finding details flag changed settings but show saved search values without exposing members snapshot', async () => {
+  const saved = settingsModule.roundSettings(searchMembers);
+  const data = load('lib/findingData.ts', { './roundSettings': settingsModule, './finding': finding, '@/lib/db': {
+    q: async () => searchMembers.map(m => ({ ...m, max_distance_mi: 15, comfort_tier: '$$$' })),
+    q1: async () => ({ id: 10, status: 'voting', search_city: 'Houston, TX', search_settings: saved, search_distance_mi: 5, group_tier: '$', plan_count: 3 }),
+  } });
+  const result = await data.getFindingDetails(5, 'Houston, TX');
+  assert.equal(result.settingsChanged, true);
+  assert.equal(result.needsNewSearch, true);
+  assert.equal(result.maxDistanceMi, 5);
+  assert.equal(result.round.group_tier, '$');
+  assert.equal('search_settings' in result.round, false);
+});
+
+test('generation uses saved preferences and persists a disclosed radius expansion in the plan and Finding data', async () => {
+  const writes = [];
+  const { fillRound } = load('lib/pipeline.ts', {
+    './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'),
+    './db': {
+      q1: async () => ({ group_id: 5, search_city: 'Houston, TX', current_city: 'Houston, TX', lat: 29.7604, lng: -95.3698,
+        search_settings: settingsModule.roundSettings(searchMembers), search_distance_mi: 1, group_tier: '$' }),
+      q: async (sql, args) => { assert.ok(!sql.startsWith('select m.availability')); writes.push([sql, args]); return []; },
+    },
+    './tier': { groupTier: async () => { throw Error('Must use saved tier'); } },
+    './serpapi': { categoriesFor: x => x, MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} },
+    './price': { planLevel: () => '$' },
+    './gemini': { generatePlans: async ctx => {
+      assert.equal(ctx.tier, '$'); assert.equal(ctx.maxDistanceMi, 1); assert.deepEqual(Array.from(ctx.interests), ['coffee']);
+      return [{ title: 'Cafe', summary: '', stops: [{ place: 'Cafe', time: '2 PM' }], est_cost_per_person: 12, why_fits: 'Fits.' }];
+    } },
+  });
+  await fillRound(10, async (cats, city, tier, distance) => {
+    assert.equal(tier, '$'); assert.equal(distance, 1);
+    return [{ name: 'Cafe', cost: 12, price: '$', searchRadiusMi: 1.5, radiusNote: 'Search expanded to 1.5 mi.' }];
+  });
+  assert.ok(writes.find(([sql]) => sql.startsWith('insert into plans'))[1][6].includes('Search expanded to 1.5 mi.'));
+  assert.equal(writes.find(([sql]) => sql.startsWith('update plan_rounds set search_distance_mi'))[1][1], 1.5);
 });

@@ -7,6 +7,14 @@ export default {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      keyframes: {
+        bob: { "0%, 100%": { transform: "translateY(0)" }, "50%": { transform: "translateY(-14px)" } },
+        "bob-wave": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-16px)" },
+        },
+      },
+      animation: { bob: "bob 1.4s ease-in-out infinite", "bob-wave": "bob-wave var(--wave-loop) cubic-bezier(0.37, 0, 0.63, 1) infinite" },
       colors: {
         matcha: c("matcha"),
         pistachio: c("pistachio"),

@@ -1,4 +1,5 @@
 "use client";
+import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
@@ -14,7 +15,8 @@ type Member = { id: number; name: string; setup_done: boolean; has_voted: boolea
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: g, error } = useApi<any>(`/api/groups/${id}`);
+  const { data: g, error } = useApi<any>(`/api/groups/${id}`, 4000, true);
+  useFindingRedirect(id, g);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,7 +108,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
           {open && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {!open && <Link href={`/groups/${id}/finding`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
+          {!open && <Link href={`/groups/${id}/finding${final ? "?new=1" : ""}`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
           <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
         </div>
       </>}

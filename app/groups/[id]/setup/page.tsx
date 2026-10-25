@@ -1,4 +1,5 @@
 "use client";
+import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
@@ -10,6 +11,8 @@ import { api, INTERESTS, SLOTS, toggle, useApi } from "@/lib/client";
 export default function Setup({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const r = useRouter();
+  const { data: group } = useApi<any>(`/api/groups/${id}`, 4000, true);
+  useFindingRedirect(id, group);
   const { data } = useApi<any>(`/api/groups/${id}/me`);
   const [linkedTier, setLinkedTier] = useState<string | null>(null);
   const [av, setAv] = useState<string[]>([]), [it, setIt] = useState<string[]>([]), [mi, setMi] = useState(10), [err, setErr] = useState("");

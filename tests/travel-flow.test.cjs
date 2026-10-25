@@ -244,3 +244,13 @@ test('copy: finding shows short status lines and has no status button or back li
   assert.ok(screen('app/travel/[id]/finding/page.tsx',trip('voting')).txt.includes('A vote is already open.'));
   assert.ok(screen('app/travel/[id]/finding/page.tsx',trip('final',{confirmedAt:'2026-10-25T00:00:00Z'})).txt.includes('Confirmed. New searches are locked.'));
 });
+test('setup: chips show their own dollar amounts and the basis line; the fixed fallback has no line; the limit input has a $',()=>{
+  const live=screen('app/travel/[id]/setup/page.tsx',{airport:'ELP',budget:null,suggestions:{light:30,room:70,flex:120,available:350.4}});
+  assert.match(live.txt,/\$30Keep it light/);assert.match(live.txt,/\$70A little room/);assert.match(live.txt,/\$120More flexibility/);
+  assert.match(live.txt,/Based on your \$350 available\./);
+  assert.ok(nodes(live.tree).some(n=>n.type==='span'&&n.props['aria-hidden']==='true'&&text(n)==='$'),'$ adornment inside the limit input');
+  for(const none of [null,undefined]){
+    const fixed=screen('app/travel/[id]/setup/page.tsx',{airport:'ELP',budget:null,suggestions:none});
+    assert.match(fixed.txt,/\$200Keep it light/);assert.match(fixed.txt,/\$700More flexibility/);assert.ok(!/Based on your/.test(fixed.txt));
+  }
+});

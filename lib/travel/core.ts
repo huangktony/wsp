@@ -88,3 +88,9 @@ export function defaultCandidates(now = new Date()): Candidate[] {
   const day = (offset: number) => new Date(now.getTime() + offset * 864e5).toISOString().slice(0, 10);
   return ['AUS', 'DEN'].map((airport, i) => ({ id: i + 1, airport, depart: day(30), return: day(33) }));
 }
+
+export type BudgetSuggestions = { light: number; room: number; flex: number; available: number };
+const PRESET_LABELS = ['Keep it light', 'A little room', 'More flexibility'];
+/** Fixed amounts are used when there is no live bank account to size the presets from. */
+const FALLBACK_PRESETS = [200, 400, 700];
+export const presetsFor = (s: BudgetSuggestions | null | undefined) => (s ? [s.light, s.room, s.flex] : FALLBACK_PRESETS).map((amount, i) => ({ amount, label: PRESET_LABELS[i] }));

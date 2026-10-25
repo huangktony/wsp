@@ -40,7 +40,7 @@ function fixture(failure=null){
     const result=await query(sql,args);if(sql==='commit'||sql==='rollback'){unlock?.();unlock=null;}return result;
   }};}};
   const service=load('lib/travel/service.ts',{
-    '../db':{pool,q:async(sql,a)=>(await query(sql,a)).rows,q1:async()=>({owed:50})},'node:crypto':require('node:crypto'),
+    '../db':{pool,q:async(sql,a)=>(await query(sql,a)).rows,q1:async(sql,a)=>sql.includes('from users')?{nessie_account_id:members.find(m=>m.user_id===a[0])?.nessie_account_id??null}:{owed:50}},'node:crypto':require('node:crypto'),
     '../nessie':{isLiveAccount:id=>id==='live-test',loadSpending:async()=>{financialCalls++;return {balance:500,purchases:[{merchant_id:'m',amount:100,purchase_date:'2020-01-01',status:'completed'}],ledger:[]};}},
     './ballot':ballot,'./flow':load('lib/travel/flow.ts'),'./discovery':discovery,'./core':core,'./finance':finance,'./flights':{compareFlights:async(origins,options)=>{generationCalls++;if(hold)await hold;return new Map(origins.flatMap((origin,i)=>options.map(o=>[`${origin}/${o.id}`,{origin,destination:o.airport,depart:o.depart,return:o.return,failure,error:failure?'private raw error':undefined,price:failure?null:origin===o.airport?0:o.id===1?[120,110,180][i]:o.id===2?[180,210,250][i]:1000,local:origin===o.airport,airlines:['Example'],stops:0,duration:100,quotedAt:new Date().toISOString(),source:'serpapi'}])));}},
   });
@@ -233,4 +233,15 @@ test('authorized redraw excludes previous winner; exhausted destination pool doe
   await assert.rejects(f.service.startComparison(5,1),e=>e.status===422&&/No new supported destinations/.test(e.message));
   assert.equal(f.generationCalls,count);
   assert.equal((await f.service.readTrip(5,1)).savedFinal.id,comparisonId);
+});
+
+test('setup suggestions come from the member\'s own available money, only for a live account, and only to that member',async()=>{
+  const f=fixture();
+  assert.equal((await f.service.ownSetup(5,1)).suggestions,null,'a mock account has no suggestions');
+  f.members[0].nessie_account_id=null;assert.equal((await f.service.ownSetup(5,1)).suggestions,null,'no account has no suggestions');
+  f.members[0].nessie_account_id='live-test';
+  // balance 500, one 100 purchase, 50 owed: 350 available
+  const own=await f.service.ownSetup(5,1);assert.equal(JSON.stringify(own.suggestions),JSON.stringify({light:30,room:70,flex:120,available:350}));
+  assert.equal((await f.service.ownSetup(5,2)).suggestions,null,'another member is not affected');
+  const raw=JSON.stringify(await f.service.readTrip(5,1));assert.ok(!raw.includes('suggestions')&&!raw.includes('"flex"'),'never part of the trip payload');
 });

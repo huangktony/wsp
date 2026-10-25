@@ -9,6 +9,7 @@ import { api, useApi } from "@/lib/client";
 
 export default function Spending() {
   const [days, setDays] = useState(30);
+  const [linking, setLinking] = useState(false), [linkErr, setLinkErr] = useState("");
   const { data, error, reload } = useApi<any>(`/api/me/spending?days=${days}`);
   if (error) {
     return (
@@ -23,7 +24,8 @@ export default function Spending() {
     return (
       <Page title="Spending and budget" tabs>
         <p className="mb-4 text-muted">Link a demo account to see your spending and budget level.</p>
-        <button className="btn" onClick={() => api("/api/bank/link", "POST").then(reload)}>Link demo bank account</button>
+        {linkErr && <p className="mb-3 font-semibold text-deep">{linkErr}</p>}
+        <button className="btn" disabled={linking} onClick={() => { setLinking(true); setLinkErr(""); api("/api/bank/link", "POST").then(reload).catch((e) => setLinkErr(e.message)).finally(() => setLinking(false)); }}>{linking ? "Linking…" : "Link demo bank account"}</button>
       </Page>
     );
   }

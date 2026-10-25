@@ -15,6 +15,7 @@ import {
   withStopCosts,
 } from "@/lib/pipeline";
 import { redrawStatus } from "@/lib/redraw";
+import { refreshTransferStatuses } from "@/lib/payments";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -109,15 +110,37 @@ export async function GET(
       delete p.veto;
     }
   }
-  const members = await q<{ id: number; name: string; setup_done: boolean }>("select u.id,u.name,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [id]);
+  const members = await q<{ id: number; name: string; setup_done: boolean }>(
+    "select u.id,u.name,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
+    [id],
+  );
   const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
 
-  let split = null, payments: any[] = [];
+  let split = null,
+    payments: any[] = [];
   if (round.status === "final") {
     split = await computeSplit(round.id);
-    payments = await q<any>("select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id", [round.id]);
+    await refreshTransferStatuses(round.id);
+    payments = await q<any>(
+      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.transfer_status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id",
+      [round.id],
+    );
   }
+
   const inclusion = roundInclusion(round, members, uid);
   const { search_settings, ...publicRound } = round;
-  return json({ ...base, round: publicRound, inclusion, plans, members, memberCount, voted, roundOpen, split, payments, isPayer: round.payer_id === uid, redraw: await redrawStatus(id, uid) });
+  return json({
+    ...base,
+    round: publicRound,
+    inclusion,
+    plans,
+    members,
+    memberCount,
+    voted,
+    roundOpen,
+    split,
+    payments,
+    isPayer: round.payer_id === uid,
+    redraw: await redrawStatus(id, uid),
+  });
 }

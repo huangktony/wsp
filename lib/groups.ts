@@ -1,4 +1,5 @@
 import { q, q1 } from "@/lib/db";
+import { duesInGroup } from "@/lib/payments";
 
 type Result = { ok: true } | { error: string; status: number };
 const err = (error: string, status: number): Result => ({ error, status });
@@ -18,6 +19,12 @@ export async function leaveGroup(groupId: number, userId: number, newOwnerId?: n
   const g = await q1<{ created_by: number }>("select created_by from groups where id=$1", [groupId]);
   if (!g) return err("group not found", 404);
   if (!(await q1("select 1 from memberships where group_id=$1 and user_id=$2", [groupId, userId]))) return err("not in this group", 403);
+  // Unpaid dues block leaving, owner or not (the owner check below comes after, so a transfer of ownership can't skip it).
+  // A payer who is still owed money may leave: rounds.payer_id and the others' 'owed' rows stay, and members can still pay them
+  // because payments resolve the payer through users, not memberships. The catch: the final screen looks the payer up among current
+  // members, so their name shows as missing there.
+  const dues = await duesInGroup(groupId, userId);
+  if (dues > 0) return err(`You owe $${dues.toFixed(2)} in this group. Pay your dues before leaving.`, 409);
   const others = await q<{ user_id: number }>("select user_id from memberships where group_id=$1 and user_id<>$2", [groupId, userId]);
   const owner = g.created_by === userId;
   if (owner) {

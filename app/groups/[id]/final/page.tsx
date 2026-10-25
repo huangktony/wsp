@@ -157,7 +157,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
                 {note && <span className="block text-xs text-muted">{note}</span>}
               </span>
               <span className="text-[15px] font-bold tabular-nums">{money(x.amount)}</span>
-              {pay && <span className={pay.status === "paid" ? "chip" : "chip-pink"}>{pay.status === "paid" ? "PAID" : "OWED"}</span>}
+              {pay && <span className={pay.status === "paid" ? "chip" : "chip-pink"}>{pay.status === "paid" ? (pay.transfer_status && pay.transfer_status !== "completed" ? "PENDING" : "PAID") : "OWED"}</span>}
             </li>
           );
         })}
@@ -184,15 +184,15 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           <p role="status" className="rounded-2xl bg-orchid p-3 text-center text-sm font-semibold text-orchidink">{payer?.name ?? "The organizer"} sent you a reminder to pay back {money(myPayment.amount)}.</p>
         )}
         {sent && myPayment?.status === "owed" && (
-          <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
-            Pay {payer?.name} back {money(myPayment.amount)}
+          <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); setErr(""); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
+            {busy ? "Sending…" : `Pay ${payer?.name ?? "the organizer"} back ${money(myPayment.amount)}`}
           </button>
         )}
         {sent && <Link href="/groups" className="btn-ghost">Back to groups</Link>}
         <RedrawVote id={id} redraw={data.redraw} onChanged={reload} />
         <Link href={`/groups/${id}/finding?new=1`} className="flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo">Find new plans</Link>
       </div>
-      <p className="mt-3 text-center text-xs text-muted">Demo only. No real money moves.</p>
+      <p className="mt-3 text-center text-xs text-muted">Demo bank (Nessie sandbox). No real money moves.</p>
     </Page></div>
   );
 }

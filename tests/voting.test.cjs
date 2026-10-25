@@ -61,6 +61,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
   mocks['@/lib/redraw'] = { redrawStatus: async () => null };
+  mocks['@/lib/payments'] = { refreshTransferStatuses: async () => {}, duesInGroup: async () => 0 };
   mocks['@/lib/groups'] = { deleteGroup: async () => ({ ok: true }) };
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
   const post = load('app/api/plans/[id]/vote/route.ts', mocks).POST;

@@ -6,6 +6,7 @@ import { fail, isMember, json, requireUser } from "@/lib/api";
 import { groupTier } from "@/lib/tier";
 import { deleteGroup } from "@/lib/groups";
 import { redrawStatus } from "@/lib/redraw";
+import { duesInGroup } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export async function GET(
     round: round ? { id: round.id, status: round.status } : null,
     redraw: await redrawStatus(id, uid),
     isCreator: g.created_by === uid,
+    myDues: await duesInGroup(id, uid),
     me: uid,
   });
 }

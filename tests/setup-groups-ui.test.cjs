@@ -55,6 +55,13 @@ for (const [label, data, ids] of [
     assert.match(row.props.className, /snap-mandatory/);
     for (const card of cards) assert.match(card.props.className, /snap-start/);
   }
+  const actions = nodes(tree).find(n => n.props?.['aria-label'] === 'Needs action');
+  assert.equal(!!actions, ids.length > 0);
+  assert.equal(text(tree).includes('Needs Action'), ids.length > 0);
+  if (actions) {
+    assert.equal(nodes(actions).filter(n => n.type === 'a').length, ids.length);
+    assert.ok(!nodes(actions).some(n => n.props?.href === '/groups/new'));
+  }
   const content = nodes(tree).find(n => n.props?.className === 'flex flex-col gap-4 px-6');
   for (const g of data) {
     assert.equal(nodes(content).filter(n => n.type === 'h2' && text(n) === g.name).length, 1);

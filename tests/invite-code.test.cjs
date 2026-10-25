@@ -41,6 +41,7 @@ test('generator uses crypto.randomInt with the exact readable alphabet', () => {
 
 function createRoute(q1, generate = () => 'WSP-BCD', q = async () => []) {
   return load('app/api/groups/route.ts', {
+    '@/lib/pipeline': { settleRound: async () => 'voting' },
     '@/lib/db': { q, pool: { connect: async () => ({ release() {}, query: async (sql, params) => {
       if (sql.startsWith('insert into groups')) { const row = await q1(sql, params); return { rows: row ? [row] : [] }; }
       if (sql.startsWith('insert into memberships')) return { rows: await q(sql, params) };
@@ -94,6 +95,7 @@ test('unrelated database failures are not retried', async () => {
 test('unauthenticated creation never queries or generates a code', async () => {
   const unexpected = () => { throw new Error('Must not run'); };
   const route = load('app/api/groups/route.ts', {
+    '@/lib/pipeline': { settleRound: async () => 'voting' },
     '@/lib/db': { pool: { connect: unexpected }, q: unexpected },
     '@/lib/serpapi': { geocodeCity: unexpected },
     '@/lib/usCities': load('lib/usCities.ts', {}),

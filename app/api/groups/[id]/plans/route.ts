@@ -20,7 +20,7 @@ import { refreshTransferStatuses } from "@/lib/payments";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-/** Screen 8: start finding plans (or join the search already running). Also used to regenerate after an all-veto round. */
+/** Start finding plans, or join the search already running. */
 export async function POST(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -53,8 +53,9 @@ export async function POST(
 }
 
 /**
- * Polled every few seconds by screens 8-10.
- * Privacy: during voting only your own votes and a "voted" count are returned, never tallies or who voted what.
+ * Polled every few seconds by screens 8–10.
+ * During voting, return only your own votes and participation counts,
+ * never aggregate tallies or other members' ballots.
  */
 export async function GET(
   _: Request,
@@ -70,6 +71,8 @@ export async function GET(
     "select name,city,created_by from groups where id=$1",
     [id],
   );
+  if (!g) return fail("group not found", 404);
+
   const base = {
     group: { name: g.name },
     me: uid,
@@ -77,7 +80,7 @@ export async function GET(
   };
 
   let round = await q1<any>(
-    "select id,status from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1",
+    "select id,status from plan_rounds where group_id=$1 order by (status='final') desc,id desc limit 1",
     [id],
   );
   if (!round) return json({ ...base, round: null, plans: [] });
@@ -85,20 +88,35 @@ export async function GET(
   if (round.status === "voting") await settleRound(round.id);
 
   round = await q1<any>(
-    `select id,status,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
+    `select id,status,
+       to_jsonb(r)->'search_settings' search_settings,
+       to_jsonb(r)->>'search_city' search_city,
+       to_jsonb(r)->>'search_error' search_error,
+       (to_jsonb(r)->>'sample_places')::boolean sample_places,
+       group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,
+       split_mode,requests_sent,payer_id,created_at,
        greatest(0, extract(epoch from vote_deadline - now()))::int seconds_left
      from plan_rounds r where id=$1`,
     [round.id],
   );
+  if (!round) return json({ ...base, round: null, plans: [] });
 
   round.search_city = resolveRoundCity(round).city;
   const open = round.status === "voting" || round.status === "generating";
 
   const plans = await q<any>(
-    `select p.id,p.title,p.summary,p.stops,p.est_cost_per_person::float cost,p.price_level,p.why_fits,
-       count(v.*) filter (where v.value='approve')::int approve, count(v.*) filter (where v.value='pass')::int veto,
+    `select p.id,p.title,p.summary,p.stops,
+       p.est_cost_per_person::float cost,p.price_level,p.why_fits,
+       count(v.*) filter (where v.value='approve')::int approve,
+       count(v.*) filter (where v.value='pass')::int veto,
        max(v.value) filter (where v.user_id=$2) my_vote
-     from plans p join plan_rounds r on r.id=p.round_id left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")} where p.round_id=$1 group by p.id order by p.id`,
+     from plans p
+     join plan_rounds r on r.id=p.round_id
+     left join votes v
+       on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")}
+     where p.round_id=$1
+     group by p.id
+     order by p.id`,
     [round.id, uid],
   );
 
@@ -110,25 +128,45 @@ export async function GET(
       delete p.veto;
     }
   }
-  const members = await q<{ id: number; name: string; setup_done: boolean }>(
-    "select u.id,u.name,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
+
+  const members = await q<{
+    id: number;
+    name: string;
+    setup_done: boolean;
+  }>(
+    `select u.id,u.name,
+       (jsonb_array_length(m.availability)>0) setup_done
+     from memberships m
+     join users u on u.id=m.user_id
+     where m.group_id=$1
+     order by m.joined_at`,
     [id],
   );
-  const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
 
-  let split = null,
-    payments: any[] = [];
+  const { voted, memberCount, roundOpen } = await getVotingParticipation(
+    id,
+    round,
+  );
+
+  let split = null;
+  let payments: any[] = [];
   if (round.status === "final") {
     split = await computeSplit(round.id);
     await refreshTransferStatuses(round.id);
     payments = await q<any>(
-      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.transfer_status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id",
+      `select p.id,p.user_id,u.name,p.amount::float amount,
+         p.status,p.transfer_status,p.reminded_at
+       from payments p
+       join users u on u.id=p.user_id
+       where p.round_id=$1
+       order by p.id`,
       [round.id],
     );
   }
 
   const inclusion = roundInclusion(round, members, uid);
   const { search_settings, ...publicRound } = round;
+
   return json({
     ...base,
     round: publicRound,

@@ -1,10 +1,20 @@
 import { includedVoteSql } from "./roundParticipation";
-import { roundSettings, searchPreferences, settingsChanged } from "./roundSettings";
+import {
+  roundSettings,
+  searchPreferences,
+  settingsChanged,
+} from "./roundSettings";
 import { bestSlot, resolveRoundCity, sameCity } from "./finding";
 export { bestSlot } from "./finding";
 import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
-import { categoriesFor, findPlaces, MissingCityError, PlaceSearchError, type Place } from "./serpapi";
+import {
+  categoriesFor,
+  findPlaces,
+  MissingCityError,
+  PlaceSearchError,
+  type Place,
+} from "./serpapi";
 import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
 import { splitAmounts, type SplitMode } from "./split";
@@ -14,6 +24,7 @@ import { splitAmounts, type SplitMode } from "./split";
  *   generating -> voting -> final      (a plan won)
  *                        -> vetoed     (every plan was vetoed, none approved; next round leaves those places out)
  *   generating -> failed               (generation crashed or stalled)
+ *   generating/voting -> superseded    (a new search replaced this attempt)
  * After final, the payer (group creator) picks even / by item split and sends requests (requests_sent).
  */
 
@@ -22,40 +33,58 @@ export class NoPlacesError extends Error {}
 
 export class SearchSchemaPendingError extends Error {
   constructor() {
-    super("Plan search needs a database update. Ask the group organizer to apply the round search migration.");
+    super(
+      "Plan search needs a database update. Ask the group organizer to apply the round search migration.",
+    );
   }
 }
 
 /** Check explicitly before writing optional metadata; never recover from a failed SQL statement. */
-export async function hasSearchMetadata(query: (sql: string, args: unknown[]) => Promise<{ rows: any[] }>) {
+export async function hasSearchMetadata(
+  query: (sql: string, args: unknown[]) => Promise<{ rows: any[] }>,
+) {
   const result = await query(
     "select count(*)::int count from information_schema.columns where table_schema=current_schema() and table_name='plan_rounds' and column_name=any($1::text[])",
-    [["search_city", "search_distance_mi", "sample_places", "search_error", "search_settings"]],
+    [
+      [
+        "search_city",
+        "search_distance_mi",
+        "sample_places",
+        "search_error",
+        "search_settings",
+      ],
+    ],
   );
   return result.rows[0]?.count === 5;
 }
 
-/** The latest round is final. Only the group's redraw vote (lib/redraw.ts) can replace it. */
+/** A final round exists. Only the group's redraw vote (lib/redraw.ts) can replace it. */
 export class FinalPlanError extends Error {}
 
 /**
  * Claims a new round for the group, or returns the round already in progress.
  * Uses a per-group advisory lock so two members opening "Finding plans" at once make one round, not two.
  */
-export async function startRound(groupId: number): Promise<{ roundId: number; status: string; created: boolean }> {
+export async function startRound(
+  groupId: number,
+): Promise<{ roundId: number; status: string; created: boolean }> {
   const c = await pool.connect();
   try {
     await c.query("begin");
     await c.query("select pg_advisory_xact_lock(4242, $1)", [groupId]);
 
-    const group = (await c.query("select city from groups where id=$1 for share", [groupId])).rows[0];
+    const group = (
+      await c.query("select city from groups where id=$1 for share", [groupId])
+    ).rows[0];
     const city = group?.city?.trim();
     if (!city) throw new MissingCityError();
 
-    const members = (await c.query(
-      "select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
-      [groupId],
-    )).rows;
+    const members = (
+      await c.query(
+        "select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id",
+        [groupId],
+      )
+    ).rows;
     const settings = roundSettings(members);
     const preferences = searchPreferences(settings);
     const sample = process.env.USE_SAMPLE_PLACES === "true";
@@ -66,13 +95,19 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
       [groupId],
     );
 
-    const last = (await c.query(
-      "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1 for update",
-      [groupId],
-    )).rows[0];
+    // A failed redraw explicitly restores its previous final; otherwise use the
+    // newest attempt, including failures, so an older voting round cannot resurface.
+    const last = (
+      await c.query(
+        "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 order by (status='final') desc,id desc limit 1 for update",
+        [groupId],
+      )
+    ).rows[0];
 
     if (last?.status === "final") {
-      throw new FinalPlanError("The plan is final. Ask the group for new plans instead.");
+      throw new FinalPlanError(
+        "The plan is final. Ask the group for new plans instead.",
+      );
     }
 
     if (
@@ -87,7 +122,8 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     }
 
     // After an all-veto round, carry the attempt count and the places to leave out.
-    const vetoed = last?.status === "vetoed" &&
+    const vetoed =
+      last?.status === "vetoed" &&
       sameCity(resolveRoundCity(last).city, city) &&
       (last.sample_places ?? false) === sample;
     const excluded: string[] = vetoed ? last.excluded : [];
@@ -100,12 +136,26 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
       throw new Error("No group distance preference available");
     }
 
-    const r = await c.query(
-      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
-      [groupId, attempt, excluded, city, preferences.distance, sample, preferences.tier, JSON.stringify(settings)],
+    // Superseded work must not re-open voting when an older provider call returns.
+    await c.query(
+      "update plan_rounds set status='superseded' where group_id=$1 and status in ('generating','voting')",
+      [groupId],
     );
 
-    if (last?.status === "voting") await c.query("update plan_rounds set status='replaced' where id=$1 and status='voting'", [last.id]);
+    const r = await c.query(
+      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
+      [
+        groupId,
+        attempt,
+        excluded,
+        city,
+        preferences.distance,
+        sample,
+        preferences.tier,
+        JSON.stringify(settings),
+      ],
+    );
+
     await c.query("commit");
     return { roundId: r.rows[0].id, status: "generating", created: true };
   } catch (e) {
@@ -117,7 +167,10 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
 }
 
 /** Runs the engine for a claimed round: shared slot -> group tier -> places -> 3 plans -> open voting. */
-export async function fillRound(roundId: number, find: typeof findPlaces = findPlaces): Promise<void> {
+export async function fillRound(
+  roundId: number,
+  find: typeof findPlaces = findPlaces,
+): Promise<void> {
   try {
     const round = await q1<any>(
       `select r.id,r.group_id,r.excluded,r.group_tier,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,
@@ -134,18 +187,21 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       lng: round.lng,
     });
     const members: { availability: string[]; interests: string[] }[] =
-      round.search_settings ?? await q<any>(
+      round.search_settings ??
+      (await q<any>(
         "select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1",
         [round.group_id],
-      );
+      ));
 
     // Members who haven't finished setup don't drag the slot or interests down.
-    const ready = members.filter((m) => (m.availability as string[]).length);
+    const ready = members.filter((m) => m.availability.length);
     const basis = ready.length ? ready : members;
-    const { slot, free } = bestSlot(basis.map((m) => m.availability as string[]));
-    const tier = round.group_tier ?? await groupTier(round.group_id);
-    const sets = basis.map((m) => m.interests as string[]);
-    const shared = sets.length ? sets[0].filter((i) => sets.every((s) => s.includes(i))) : [];
+    const { slot, free } = bestSlot(basis.map((m) => m.availability));
+    const tier = round.group_tier ?? (await groupTier(round.group_id));
+    const sets = basis.map((m) => m.interests);
+    const shared = sets.length
+      ? sets[0].filter((i) => sets.every((s) => s.includes(i)))
+      : [];
     const interests = shared.length ? shared : [...new Set(sets.flat())];
 
     const excluded = new Set<string>(round.excluded ?? []);
@@ -156,7 +212,9 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       round.search_distance_mi,
       {
         sample: round.sample_places === true,
-        center: coords ? { latitude: coords.lat, longitude: coords.lng } : undefined,
+        center: coords
+          ? { latitude: coords.lat, longitude: coords.lng }
+          : undefined,
       },
     );
     const fresh = found.filter((p) => !excluded.has(p.name));
@@ -174,10 +232,14 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
     });
 
     if (!drafts.length) {
-      throw new NoPlacesError(`No places found within the ${tier} budget near ${city}. Try more interests or a bigger distance.`);
+      throw new NoPlacesError(
+        `No places found within the ${tier} budget near ${city}. Try more interests or a bigger distance.`,
+      );
     }
 
-    const byName = new Map(places.map((p) => [p.name.toLowerCase(), p] as [string, Place]));
+    const byName = new Map(
+      places.map((p) => [p.name.toLowerCase(), p] as [string, Place]),
+    );
 
     for (const d of drafts) {
       const stops = enrichStops(d.stops, d.est_cost_per_person, byName);
@@ -186,35 +248,67 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       const total = stops.reduce((s, x) => s + x.cost, 0);
       const price = planLevel(stops);
       const radiusNote = found.find((p) => p.radiusNote)?.radiusNote;
-      const baseWhy = radiusNote ? `${d.why_fits} ${radiusNote}` : d.why_fits;
-      const why = free < basis.length ? `${baseWhy} ${free} of ${basis.length} are free ${slot}.` : baseWhy;
+      const baseWhy = radiusNote
+        ? `${d.why_fits} ${radiusNote}`
+        : d.why_fits;
+      const why =
+        free < basis.length
+          ? `${baseWhy} ${free} of ${basis.length} are free ${slot}.`
+          : baseWhy;
 
       await q(
         "insert into plans(round_id,title,summary,stops,est_cost_per_person,price_level,why_fits) values($1,$2,$3,$4,$5,$6,$7)",
-        [roundId, d.title, d.summary, JSON.stringify(stops), total, price, why],
+        [
+          roundId,
+          d.title,
+          d.summary,
+          JSON.stringify(stops),
+          total,
+          price,
+          why,
+        ],
       );
     }
 
     // Preserve the actual radius used for the Finding screen; requested settings remain in the snapshot.
-    const usedRadius = Math.max(round.search_distance_mi, ...found.map((p) => p.searchRadiusMi ?? 0));
+    const usedRadius = Math.max(
+      round.search_distance_mi,
+      ...found.map((p) => p.searchRadiusMi ?? 0),
+    );
     if (round.search_settings) {
-      await q("update plan_rounds set search_distance_mi=$2 where id=$1", [roundId, usedRadius]);
+      await q(
+        "update plan_rounds set search_distance_mi=$2 where id=$1",
+        [roundId, usedRadius],
+      );
     }
 
     const hours = round.vote_hours ?? 24;
     await q(
-      "update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1",
+      "update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1 and status='generating'",
       [roundId, slot, tier, hours],
     );
   } catch (e) {
-    const message = e instanceof MissingCityError || e instanceof PlaceSearchError || e instanceof NoPlacesError
-      ? e.message
-      : "Couldn't make plans this time. Try again.";
+    const message =
+      e instanceof MissingCityError ||
+      e instanceof PlaceSearchError ||
+      e instanceof NoPlacesError
+        ? e.message
+        : "Couldn't make plans this time. Try again.";
 
-    if (await hasSearchMetadata(async (sql, args) => ({ rows: await q(sql, args) }))) {
-      await q("update plan_rounds set status='failed',search_error=$2 where id=$1", [roundId, message]);
+    if (
+      await hasSearchMetadata(async (sql, args) => ({
+        rows: await q(sql, args),
+      }))
+    ) {
+      await q(
+        "update plan_rounds set status='failed',search_error=$2 where id=$1 and status='generating'",
+        [roundId, message],
+      );
     } else {
-      await q("update plan_rounds set status='failed' where id=$1", [roundId]);
+      await q(
+        "update plan_rounds set status='failed' where id=$1 and status='generating'",
+        [roundId],
+      );
     }
     throw e;
   }
@@ -239,7 +333,8 @@ function enrichStops(
   return stops.map((s) => {
     const p = byName.get(s.place.toLowerCase());
 
-    // An unknown place should not get this far (plans are checked against the candidates), so this only spreads the model's own estimate.
+    // An unknown place should not get this far (plans are checked against the candidates),
+    // so this only spreads the model's own estimate.
     return {
       ...s,
       address: p?.address,
@@ -257,13 +352,23 @@ function enrichStops(
  */
 export function withStopCosts(stops: any[], planCost: number): Stop[] {
   const list = Array.isArray(stops) ? stops : [];
-  const known = list.reduce((a, s) => a + (Number.isFinite(Number(s.cost)) ? Number(s.cost) : 0), 0);
-  const missing = list.filter((s) => !Number.isFinite(Number(s.cost))).length;
-  const each = missing ? Math.max(0, (Number(planCost) || 0) - known) / missing : 0;
+  const known = list.reduce(
+    (a, s) =>
+      a + (Number.isFinite(Number(s.cost)) ? Number(s.cost) : 0),
+    0,
+  );
+  const missing = list.filter(
+    (s) => !Number.isFinite(Number(s.cost)),
+  ).length;
+  const each = missing
+    ? Math.max(0, (Number(planCost) || 0) - known) / missing
+    : 0;
 
   return list.map((s) => ({
     ...s,
-    cost: Number.isFinite(Number(s.cost)) ? Number(s.cost) : Math.round(each * 100) / 100,
+    cost: Number.isFinite(Number(s.cost))
+      ? Number(s.cost)
+      : Math.round(each * 100) / 100,
   }));
 }
 
@@ -278,8 +383,14 @@ export async function runFindPlans(groupId: number): Promise<number> {
 export async function pickWinner(roundId: number) {
   const rows = await q<any>(
     `select p.id, p.est_cost_per_person::float cost,
-       count(v.*) filter (where v.value='approve')::int approves, count(v.*) filter (where v.value='pass')::int vetoes
-     from plans p join plan_rounds r on r.id=p.round_id left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")} where p.round_id=$1 group by p.id order by approves desc, vetoes asc, cost asc, p.id asc`,
+       count(v.*) filter (where v.value='approve')::int approves,
+       count(v.*) filter (where v.value='pass')::int vetoes
+     from plans p
+     join plan_rounds r on r.id=p.round_id
+     left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")}
+     where p.round_id=$1
+     group by p.id
+     order by approves desc, vetoes asc, cost asc, p.id asc`,
     [roundId],
   );
 
@@ -291,21 +402,43 @@ export async function pickWinner(roundId: number) {
 }
 
 /**
- * Closes voting when the deadline passed, everyone voted on every plan, or `force` (creator's "close now").
+ * Closes voting when the deadline passed, everyone voted on every plan,
+ * or `force` (creator's "close now").
  * Safe to call on every poll: the status check in the update makes it run once.
  */
-export async function settleRound(roundId: number, force = false): Promise<string> {
+export async function settleRound(
+  roundId: number,
+  force = false,
+): Promise<string> {
   const r = await q1<any>(
     `select r.id,r.status,r.group_id,(r.vote_deadline < now()) expired,
        (select count(*)::int from plans where round_id=r.id) plans,
-       (select count(*)::int from memberships m where group_id=r.group_id and ${includedVoteSql()}) members,
-       (select count(*)::int from votes v join plans p on p.id=v.plan_id join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where p.round_id=r.id and ${includedVoteSql()}) votes
-     from plan_rounds r where r.id=$1`,
+       (select count(*)::int
+        from memberships m
+        where m.group_id=r.group_id
+          and ${includedVoteSql("r", "m.user_id")}) members,
+       (select count(*)::int
+        from votes v
+        join plans p on p.id=v.plan_id
+        join memberships m on m.user_id=v.user_id and m.group_id=r.group_id
+        where p.round_id=r.id
+          and ${includedVoteSql("r", "m.user_id")}) votes
+     from plan_rounds r
+     where r.id=$1
+       and r.id=(
+         select latest.id
+         from plan_rounds latest
+         where latest.group_id=r.group_id
+         order by (latest.status='final') desc,latest.id desc
+         limit 1
+       )`,
     [roundId],
   );
 
   if (!r || r.status !== "voting") return r?.status ?? "missing";
-  if (!force && !r.expired && r.votes < r.plans * r.members) return "voting";
+  if (!force && !r.expired && r.votes < r.plans * r.members) {
+    return "voting";
+  }
 
   const w = await pickWinner(roundId);
 
@@ -320,14 +453,21 @@ export async function settleRound(roundId: number, force = false): Promise<strin
     );
     return done
       ? "vetoed"
-      : (await q1<any>("select status from plan_rounds where id=$1", [roundId])).status;
+      : (
+          await q1<any>(
+            "select status from plan_rounds where id=$1",
+            [roundId],
+          )
+        ).status;
   }
 
   await q(
-    `update plan_rounds set status='final', winner_plan_id=$2, payer_id=(select created_by from groups where id=$3) where id=$1 and status='voting'`,
+    "update plan_rounds set status='final', winner_plan_id=$2, payer_id=(select created_by from groups where id=$3) where id=$1 and status='voting'",
     [roundId, w.id, r.group_id],
   );
-  return "final";
+  return (
+    await q1<any>("select status from plan_rounds where id=$1", [roundId])
+  ).status;
 }
 
 /**
@@ -352,11 +492,16 @@ export async function computeSplit(roundId: number) {
     "select user_id,stop_index from stop_skips where round_id=$1",
     [roundId],
   );
-  const skipped = (uid: number) => skips.filter((s) => s.user_id === uid).map((s) => s.stop_index);
+  const skipped = (uid: number) =>
+    skips.filter((s) => s.user_id === uid).map((s) => s.stop_index);
 
   const { total, rows } = splitAmounts(
     stops.map((s) => s.cost),
-    members.map((m) => ({ user_id: m.id, name: m.name, skips: skipped(m.id) })),
+    members.map((m) => ({
+      user_id: m.id,
+      name: m.name,
+      skips: skipped(m.id),
+    })),
     r.split_mode,
   );
 

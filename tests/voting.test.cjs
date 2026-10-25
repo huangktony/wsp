@@ -149,6 +149,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     plans: [{ id: 101, my_vote: null, title: 'One', cost: 10, stops: [] }, { id: 102, my_vote: null, title: 'Two', cost: 10, stops: [] }], voted: 0, memberCount: 2 };
   let current = structuredClone(server), failNext = false, release;
   const page = load('app/groups/[id]/plans/page.tsx', {
+    'next/link': { default: 'a' },
     'next/font/google': { Inter: () => ({ className: '' }) },
     react: { ...h.react, use: p => p, useMemo: fn => fn() },
     'react/jsx-runtime': require('react/jsx-runtime'),

@@ -27,7 +27,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   try {
     await fillRound(result.roundId);
   } catch (e: any) {
-    await undoRedraw(result.oldRoundId);
+    await undoRedraw(result.oldRoundId, result.roundId);
     if (e instanceof NoPlacesError) return fail(e.message, 422);
     console.error(maskKey(`redraw failed: ${e?.message ?? e}`));
     return fail("Couldn't make new plans this time. Your final plan is unchanged, try again.", 502);

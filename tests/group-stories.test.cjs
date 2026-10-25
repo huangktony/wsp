@@ -41,25 +41,30 @@ test('badge requires an open vote, eligibility and no saved vote; labels explain
   assert.equal(stories.groupStoryLabel({ ...voting, my_voted: true }), "Austin Squad, voting open, you've voted");
   assert.equal(stories.groupStoryLabel({ ...voting, can_vote: false }), "Austin Squad, voting open, you can't vote yet");
 });
-test('list query is member-scoped and read-only; eligibility uses the saved inclusion predicate', async () => {
+test('list reads are member-scoped; eligibility uses the saved inclusion predicate after settlement', async () => {
   const participation = load('lib/roundParticipation.ts');
   let calls = 0;
   const { GET } = load('app/api/groups/route.ts', {
     '@/lib/roundParticipation': participation,
+    '@/lib/pipeline': { settleRound: async () => { throw Error('No voting candidates in this fixture'); } },
     zod: require('zod'), '@/lib/inviteCode': {}, '@/lib/serpapi': {}, '@/lib/usCities': {},
     '@/lib/api': { requireUser: async () => 42, json: data => data },
     '@/lib/db': { q: async (sql, args) => {
       calls++;
       assert.equal(args[0], 42);
+      if (!sql.includes('left join lateral')) {
+        assert.match(sql, /where m.user_id=\$1/);
+        return [];
+      }
       assert.match(sql, /where mm.user_id=\$1/);
-      assert.match(sql, /order by id desc limit 1/);
+      assert.match(sql, /order by \(status='final'\) desc,id desc limit 1/);
       assert.ok(sql.includes(participation.includedVoteSql('r', 'mm.user_id')));
       assert.doesNotMatch(sql, /\b(insert|update|delete)\b/i);
       return [{ ...voting }, { ...voting, id: 2, has_plans: false }];
     } },
   });
   const rows = await GET();
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(rows[0].status, 'VOTING OPEN');
   assert.equal(rows[1].status, 'SET UP');
 });

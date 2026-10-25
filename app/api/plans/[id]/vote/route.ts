@@ -19,7 +19,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
        and r.id=(
          select latest.id
          from plan_rounds latest
-         where latest.group_id=r.group_id and latest.status<>'failed'
+         where latest.group_id=r.group_id
          order by (latest.status='final') desc,latest.id desc
          limit 1
        )`,

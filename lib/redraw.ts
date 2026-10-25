@@ -1,6 +1,3 @@
-This keeps the schema check, current-settings snapshot, and redraw recovery, and removes the duplicate import.
-
-```ts
 import { roundSettings, searchPreferences } from "./roundSettings";
 import { hasSearchMetadata } from "./pipeline";
 import { pool, q1 } from "./db";
@@ -272,4 +269,3 @@ export async function undoRedraw(
     c.release();
   }
 }
-```

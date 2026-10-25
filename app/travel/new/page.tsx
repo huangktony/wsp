@@ -21,7 +21,7 @@ export default function CreateTrip() {
     catch(e:any) { setError(e.message); }
     finally { inFlight.current=false;setAction(null); }
   };
-  return <TravelFrame title="Create or join a trip." tabs={false}>
+  return <TravelFrame title="Create or join a trip.">
     <Link href="/travel" className={`inline-flex min-h-11 items-center text-sm font-bold underline ${travelFocus}`}>← Back to trips</Link>
     <section aria-labelledby="join-trip-heading" className="rounded-2xl bg-pistachio p-4">
       <h2 id="join-trip-heading" className="mb-3 font-[inherit] text-lg font-extrabold">Have an invite?</h2>

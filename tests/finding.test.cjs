@@ -1087,7 +1087,7 @@ test('an abandoned generating round times out with a retry error', async () => {
 
 test('slow successful POST is observed before the polling timeout starts', async () => {
   let time = 0, ready = false;
-  const { runFinding } = load('lib/findingFlow.ts', { './client': {} });
+  const { runFinding } = load('lib/findingFlow.ts', { './client': {}, './finding': finding });
   let reads = 0;
   await runFinding('5', new AbortController().signal, { update() {}, started() {}, ready() { ready = true; } }, {
     api: async (url, method) => {

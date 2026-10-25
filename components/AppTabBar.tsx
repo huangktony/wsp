@@ -23,7 +23,7 @@ export function AppTabBar({ children }: { children: ReactNode }) {
       small.removeEventListener("change", update);
     };
   }, [path]);
-  const visible = path !== "/login" && path !== "/signup" && !editing;
+  const visible = path !== "/login" && path !== "/signup" && path !== "/travel/demo" && path !== "/travel/new" && !editing;
   return <div className="mx-auto min-h-screen w-full max-w-[430px] pb-[var(--tab-bar-height)]"
     style={{ "--tab-bar-height": visible ? "calc(92px + env(safe-area-inset-bottom, 0px))" : "0px" } as CSSProperties}>
     {children}

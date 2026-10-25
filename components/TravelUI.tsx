@@ -7,8 +7,8 @@ export const travelFocus = 'focus-visible:outline focus-visible:outline-2 focus-
 export const travelButton = `inline-flex min-h-11 items-center justify-center rounded-2xl bg-matcha px-5 py-3 text-sm font-bold text-matchaink disabled:opacity-50 ${travelFocus}`;
 export const travelQuiet = `inline-flex min-h-11 items-center justify-center rounded-2xl border border-outline px-4 py-2 text-sm font-bold text-indigo disabled:opacity-50 ${travelFocus}`;
 export const travelInput = `min-h-11 w-full min-w-0 rounded-xl border border-outline bg-surface px-3 py-2 text-base text-indigo ${travelFocus}`;
-export function TravelFrame({ title, eyebrow = 'WSP TRAVEL', children, demo = false, tabs = !demo }: { title: string; eyebrow?: string; children: React.ReactNode; demo?: boolean; tabs?: boolean }) {
-  return <Page variant="plain" tabs={tabs}><div className="bg-surface px-5 pb-8 pt-6 text-indigo" style={{ fontFamily: 'Figtree, system-ui, sans-serif' }}>
+export function TravelFrame({ title, eyebrow = 'WSP TRAVEL', children, demo = false }: { title: string; eyebrow?: string; children: React.ReactNode; demo?: boolean }) {
+  return <Page variant="plain"><div className="bg-surface px-5 pb-8 pt-6 text-indigo" style={{ fontFamily: 'Figtree, system-ui, sans-serif' }}>
     <header className="mb-6"><p className="mb-2 text-xs font-extrabold tracking-[0.18em] text-secondary">{eyebrow}</p><h1 className="break-words font-[inherit] text-[32px] font-extrabold leading-tight tracking-[-1px]">{title}</h1></header>
     <div className="space-y-5">{children}</div>
   </div></Page>;

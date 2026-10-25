@@ -1,6 +1,3 @@
-This keeps Travel, uses one context-aware add button, and preserves safe-area spacing and correct active tabs.
-
-```tsx
 "use client";
 
 import Link from "next/link";
@@ -100,4 +97,3 @@ export function TabBar() {
     </nav>
   );
 }
-```

@@ -28,6 +28,7 @@ function fixture() {
   const api = { setupDone: async () => true, requireUser: async () => user, isMember: async (g, u) => g === 5 && members.some(m => m.id === u), json: body => ({ body }), fail: (error, status) => ({ error, status }) };
   const db = {
     q: async (sql, args) => {
+      sql = sql.replace(/\s+/g, ' ');
       if (sql.includes('select m.user_id, exists')) {
         const python = `import sqlite3,json,sys
 x=json.load(sys.stdin)
@@ -49,6 +50,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
       return [];
     },
     q1: async (sql, args) => {
+      sql = sql.replace(/\s+/g, ' ');
       if (sql.includes('from plans p join plan_rounds')) return { round_id: 10, group_id: 5, status: 'voting' };
       if (sql.includes('from groups')) return { name: 'Test group', created_by: 1 };
       if (sql.includes('from plan_rounds')) return roundStatus === null ? null : { id: 10, status: roundStatus, seconds_left: 3600 };

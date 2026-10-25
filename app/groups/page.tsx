@@ -1,6 +1,3 @@
-This keeps the voting carousel, current-vote shortcuts, featured group, and `groupHref` navigation.
-
-```tsx
 "use client";
 
 import Link from "next/link";
@@ -492,4 +489,3 @@ export default function Groups() {
     </Suspense>
   );
 }
-```

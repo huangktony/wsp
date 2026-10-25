@@ -82,9 +82,9 @@ test('create goes to private setup; no top mode switches remain and bottom Trave
 });
 
 
-test('plus screen joins before shared date editor, routes according to own setup, and has no bottom FAB',async()=>{
+test('plus screen joins before shared date editor and routes according to own setup',async()=>{
   for(const setupDone of [false,true]){
-    const h=harness('app/travel/new/page.tsx',null);let tree=h.render();assert.equal(tree.props.tabs,false);
+    const h=harness('app/travel/new/page.tsx',null);let tree=h.render();
     const forms=nodes(tree).filter(n=>n.type==='form');assert.deepEqual(forms.map(n=>n.props['aria-label']),['Join trip','Create trip']);
     assert.equal(nodes(forms[0]).some(n=>n.type==='editor'),false);assert.ok(nodes(forms[1]).some(n=>n.type==='editor'));
     assert.ok(nodes(tree).some(n=>n.type==='a'&&n.props.href==='/travel'));
@@ -103,4 +103,20 @@ test('create and join errors stay in their own forms; shared busy guard prevents
   tree=h.render();assert.match(text(nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip')),/Choose a future departure/);assert.equal(h.calls.length,1);
   let release;h.setRespond(()=>new Promise(r=>release=r));tree=h.render();const pending=submit(tree,'Join trip');submit(tree,'Join trip');submit(tree,'Create trip');
   assert.equal(h.calls.length,2);tree=h.render();assert.ok(nodes(tree).filter(n=>n.type==='button').every(n=>n.props.disabled));release({id:5,setupDone:false});await pending;
+});
+
+
+test('global navigation hides the bottom bar on Travel creation and demo, but keeps it on trip pages', () => {
+  let path = '/travel/new';
+  const { AppTabBar } = load('components/AppTabBar.tsx', {
+    react: { useState: value => [value, () => {}], useEffect() {} },
+    'next/navigation': { usePathname: () => path },
+    './TabBar': { TabBar: 'nav' },
+  });
+  for (const [route, visible] of [['/travel/new', false], ['/travel/demo', false], ['/travel', true], ['/travel/5/plans', true], ['/groups', true]]) {
+    path = route;
+    const tree = AppTabBar({ children: 'content' });
+    assert.equal(nodes(tree).some(node => node.type === 'nav'), visible, route);
+    assert.equal(tree.props.style['--tab-bar-height'] === '0px', !visible, route);
+  }
 });

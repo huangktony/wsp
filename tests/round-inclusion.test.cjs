@@ -92,7 +92,7 @@ test('vote API refuses excluded and unfinished members before storing or settlin
   assert.equal(writes, 0); assert.equal(settles, 0);
   setup = true;
   assert.equal((await vote()).ok, true);
-  assert.equal(writes, 1); assert.equal(settles, 1);
+  assert.equal(writes, 1); assert.equal(settles, 2); // Check the deadline before writing, then settle the new ballot.
 });
 
 test('round creation saves inclusion and re-running after setup creates a fresh round', async () => {
@@ -109,7 +109,10 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
       last = { id: inserts.length, status: 'voting', search_city: args[3], sample_places: false, search_settings: inserts.at(-1) };
       return { rows: [{ id: last.id }] };
     }
-    if (sql.includes("status='replaced'")) replaced.push(args[0]);
+    if (sql.includes("status='superseded'")) {
+      assert.match(sql, /status in \('generating','voting'\)/);
+      if (last) replaced.push(last.id);
+    }
     return { rows: [] };
   };
   const pipeline = load('lib/pipeline.ts', {
@@ -134,6 +137,7 @@ test('winner tallies and automatic closing apply the same inclusion predicate', 
     './db': {
       q1: async sql => {
         sqlSeen.push(sql);
+        if (sql.startsWith('select status')) return { status: 'final' };
         // One included voter, one plan, one vote: excluded members must not keep it open.
         assert.ok(sql.includes(inclusion.includedVoteSql()), 'member and ballot totals must be restricted');
         assert.equal(sql.split(inclusion.includedVoteSql()).length - 1, 2);

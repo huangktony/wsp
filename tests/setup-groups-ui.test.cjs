@@ -11,6 +11,10 @@ function load(file, mocks = {}) {
   vm.runInNewContext(code, { exports, URLSearchParams, require(name) {
     if (name in mocks) return mocks[name];
     if (name === 'react/jsx-runtime') return require(name);
+    if (name === '@/lib/finding') return load('lib/finding.ts');
+    if (name === '@/lib/groupStories') return load('lib/groupStories.ts');
+    if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts');
+    if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };
     throw Error(`Unmocked import: ${name}`);
   } });
   return exports;
@@ -30,10 +34,10 @@ function groups(data, query = '', owed = []) {
   return inner.type(inner.props);
 }
 const fixtures = [
-  { id: 5, name: 'Final friends', city: 'Houston, TX', members: 3, status: 'FINAL' },
-  { id: 4, name: 'Coffee club', city: 'Austin, TX', members: 2, status: 'VOTING OPEN', my_voted: false },
+  { id: 5, name: 'Final friends', city: 'Houston, TX', members: 3, status: 'FINAL', round_status: 'final' },
+  { id: 4, name: 'Coffee club', city: 'Austin, TX', members: 2, status: 'VOTING OPEN', round_status: 'voting', has_plans: true, can_vote: true, my_voted: false },
   { id: 3, name: 'Setup friends', city: 'Houston, TX', members: 1, status: 'SET UP' },
-  { id: 2, name: 'Park club', city: 'Austin, TX', members: 4, status: 'VOTING OPEN', my_voted: true },
+  { id: 2, name: 'Park club', city: 'Austin, TX', members: 4, status: 'VOTING OPEN', round_status: 'voting', has_plans: true, can_vote: true, my_voted: true },
 ];
 for (const [label, data, ids] of [
   ['zero', fixtures.filter(g => g.status !== 'VOTING OPEN'), []],
@@ -42,7 +46,7 @@ for (const [label, data, ids] of [
 ]) test(`${label} open voting groups: cards in order, others listed once, no final/setup voting CTA`, () => {
   const tree = groups(data);
   assert.match(text(tree), /WSP HANGOUT/);
-  const cards = nodes(tree).filter(n => n.type === 'article');
+  const cards = nodes(tree).filter(n => n.type === 'article' && n.props.className.includes('snap-start'));
   assert.deepEqual(cards.map(n => Number(n.key)), ids);
   const row = nodes(tree).find(n => n.props?.['aria-label'] === 'Groups with voting open');
   assert.equal(!!row, ids.length > 0);
@@ -61,7 +65,7 @@ for (const [label, data, ids] of [
 });
 test('groups search filters cards and remaining list, preserving empty state and reminders', () => {
   const tree = groups(fixtures, 'Houston');
-  assert.equal(nodes(tree).filter(n => n.type === 'article').length, 0);
+  assert.equal(nodes(tree).filter(n => n.type === 'article' && n.props.className.includes('snap-start')).length, 0);
   assert.equal(nodes(tree).filter(n => n.type === 'h2').length, 2);
   assert.ok(text(groups(fixtures, 'no match')).includes('No groups match'));
   assert.ok(text(groups([])).includes('No groups yet'));
@@ -108,9 +112,9 @@ test('Groups API settles voting candidates before labeling deadline/all-votes fi
       '@/lib/pipeline': { settleRound: async id => { assert.equal(id, 10); settled = true; } },
       '@/lib/db': { q: async sql => {
         assert.match(sql, /order by \(status='final'\) desc,id desc/);
-        if (sql.includes('join lateral')) return [{ id: 10 }];
+        if (!sql.includes('left join lateral')) return [{ id: 10 }];
         assert.equal(settled, true);
-        return [{ id: 5, round_status: outcome, my_voted: true }];
+        return [{ id: 5, round_status: outcome, has_plans: true, my_voted: true }];
       } },
     });
     const result = await GET();

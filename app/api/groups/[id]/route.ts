@@ -32,8 +32,8 @@ export async function GET(
     [id],
   );
 
-    const round = await q1<any>(
-    "select id,status,to_jsonb(r)->'search_settings' search_settings from plan_rounds r where group_id=$1 and status<>'failed' order by (status='final') desc,id desc limit 1",
+  const round = await q1<any>(
+    "select id,status,to_jsonb(r)->'search_settings' search_settings from plan_rounds r where group_id=$1 order by (status='final') desc,id desc limit 1",
     [id],
   );
 

@@ -1,6 +1,3 @@
-This keeps the feature branch’s styling and main’s navigation after saving.
-
-```tsx
 "use client";
 
 import { groupHref } from "@/lib/finding";
@@ -191,4 +188,3 @@ export default function Setup({
     </Page>
   );
 }
-```

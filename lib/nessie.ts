@@ -1,5 +1,6 @@
 // Nessie client. Behavior verified against the live sandbox, see scripts/nessie-probe.ts.
-import { mockPurchases, mockSeries, type Purchase } from "./mocks/data";
+import { mockPurchases, mockSeries } from "./mocks/data";
+import type { MerchantInfo, NessiePurchase } from "./analyze";
 
 const BASE = "https://api.nessieisreal.com";
 const useMock = () => process.env.USE_MOCKS === "true" || !process.env.NESSIE_API_KEY;
@@ -139,19 +140,51 @@ export async function linkAccount(name: string, userId: number): Promise<{ custo
   return { customerId: `c-${id}`, accountId: id };
 }
 
-export async function getPurchases(accountId: string | null, days: number): Promise<Purchase[]> {
+/** Merchants never change, so cache them for the life of the server process, keyed by merchant id. */
+const merchantCache = new Map<string, MerchantInfo>();
+
+export type SpendingData = { purchases: NessiePurchase[]; merchants: Map<string, MerchantInfo> };
+
+/**
+ * Everything one request needs, fetched once: the account check, all purchases, and the merchants they reference.
+ * Callers derive every number from this with analyze(), so the tier and the screen cannot disagree.
+ */
+export async function loadSpending(accountId: string | null): Promise<SpendingData> {
   if (live() && accountId && !accountId.startsWith("mock-")) {
     // Live: zero purchases means zero, and errors surface to the caller.
     // Nessie answers 200 [] for purchases of an unknown account or wrong key, but 404 for the account itself,
     // so check the account first. Otherwise a wrong account would look like someone who spent nothing.
     await nj(`/accounts/${accountId}`);
-    const rows = await nj(`/accounts/${accountId}/purchases`);
-    const since = Date.now() - days * 864e5;
-    return rows
-      .filter((p: any) => new Date(p.purchase_date).getTime() >= since)
-      .map((p: any) => ({ date: p.purchase_date, amount: p.amount, category: (p.description || "food").toLowerCase(), merchant: p.merchant_id || "merchant" }));
+    const rows: any[] = await nj(`/accounts/${accountId}/purchases`);
+    const purchases: NessiePurchase[] = rows.map((r) => ({ merchant_id: r.merchant_id, purchase_date: r.purchase_date, amount: r.amount, status: r.status }));
+    const merchants = new Map<string, MerchantInfo>();
+    const missing: string[] = [];
+    for (const id of new Set(purchases.map((p) => p.merchant_id))) {
+      const hit = merchantCache.get(id);
+      if (hit) merchants.set(id, hit);
+      else missing.push(id);
+    }
+    // A merchant we cannot fetch is left out, so analyze() shows it as "Unknown merchant" in "other". Failures are not cached.
+    await Promise.all(missing.map(async (id) => {
+      try {
+        const m = await nj(`/merchants/${id}`);
+        const info: MerchantInfo = { name: m.name, category: m.category };
+        merchantCache.set(id, info);
+        merchants.set(id, info);
+      } catch (e: any) {
+        console.error(maskKey(`merchant lookup failed: ${e?.message ?? e}`));
+      }
+    }));
+    return { purchases, merchants };
   }
-  return mockPurchases(accountId ?? "demo", days);
+  // Mock mode and mock- accounts: same shape, built from the mock generator (90 days covers every range the screen offers).
+  const merchants = new Map<string, MerchantInfo>();
+  const purchases = mockPurchases(accountId ?? "demo", 90).map((p) => {
+    const id = `mock:${p.merchant}`;
+    merchants.set(id, { name: p.merchant, category: p.category });
+    return { merchant_id: id, purchase_date: p.date, amount: p.amount, status: "completed" };
+  });
+  return { purchases, merchants };
 }
 
 export async function getSeries(accountId: string | null, days: number) {

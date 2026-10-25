@@ -38,7 +38,7 @@ export default function CreateTrip() {
     <div className={`${inter.className} flex min-h-[calc(100svh-var(--tab-bar-height))] flex-col gap-[18px] px-6 pb-[132px] pt-6 text-indigo`}>
       <BackButton href="/travel" className="mb-2" />
       <h1 className="font-[inherit] text-[36px] font-extrabold leading-[1.05] tracking-[-1.4px]">Start a trip</h1>
-      <form id="create-trip" aria-label="Create trip" className="flex flex-col gap-3" onSubmit={e=>{e.preventDefault();if(!name.trim()||busy)return;return run('create',async()=>{const sharedDates=validateDates(dates);return api('/api/travel','POST',{name,dates:sharedDates});});}}>
+      <form id="create-trip" aria-label="Create trip" className="flex flex-col gap-6" onSubmit={e=>{e.preventDefault();if(!name.trim()||busy)return;return run('create',async()=>{const sharedDates=validateDates(dates);return api('/api/travel','POST',{name,dates:sharedDates});});}}>
         <input type="text" required maxLength={60} aria-label="Trip name" placeholder="Trip name" value={name} onChange={e=>setName(e.target.value)} aria-describedby={createError?'create-trip-error':undefined} className={input} />
         <DatesEditor value={dates} onChange={setDates} tall />
         <ScopePicker value={dates.scope} onChange={scope=>setDates({...dates,scope})} tall />

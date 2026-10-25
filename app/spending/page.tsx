@@ -26,7 +26,7 @@ function Header() {
 }
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
-  <Page variant="plain" tabs>
+  <Page variant="plain">
     <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>{children}</div>
   </Page>
 );

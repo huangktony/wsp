@@ -53,7 +53,7 @@ function GroupsContent() {
   const needsVote = featured?.status === "VOTING OPEN" && !featured.my_voted;
   const canVote = featured?.status === "VOTING OPEN";
   return (
-    <Page variant="plain" tabs>
+    <Page variant="plain">
       <div className={`${inter.className} bg-surface text-indigo`}>
         <header className="flex items-center justify-between px-6 pb-3 pt-6">
           {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }}>
@@ -144,5 +144,5 @@ function GroupsContent() {
 }
 
 export default function Groups() {
-  return <Suspense fallback={<Page variant="plain" tabs><header className={`${inter.className} px-6 pb-3 pt-6 text-indigo`}><h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Groups</h1></header></Page>}><GroupsContent /></Suspense>;
+  return <Suspense fallback={<Page variant="plain"><header className={`${inter.className} px-6 pb-3 pt-6 text-indigo`}><h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Groups</h1></header></Page>}><GroupsContent /></Suspense>;
 }

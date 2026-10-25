@@ -37,3 +37,14 @@ export function bestSlot(avails: string[][]): { slot: string; free: number } {
   const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
   return top ? { slot: top[0], free: top[1] } : { slot: "Sat evening", free: avails.length };
 }
+
+
+/** Latest-round action; legacy city metadata and settings changes do not determine the label. */
+export function groupHomeAction(round: { status: string } | null | undefined, planCount: number) {
+  if (round?.status === "generating") return { label: "Finding plans…", destination: "finding", fresh: false, final: false } as const;
+  if (!round || round.status === "failed" || planCount === 0) return { label: "Find plans", destination: "finding", fresh: false, final: false } as const;
+  if (round.status === "final" || round.status === "confirmed") return { label: "Find new plans", destination: "finding", fresh: true, final: true } as const;
+  if (round.status === "vetoed") return { label: "Find new plans", destination: "finding", fresh: true, final: false } as const;
+  if (round.status === "voting") return { label: "Vote on plans", destination: "plans", fresh: false, final: false } as const;
+  return { label: "Find plans", destination: "finding", fresh: false, final: false } as const;
+}

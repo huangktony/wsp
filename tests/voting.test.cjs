@@ -215,8 +215,9 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     '@/components/Avatar': { Avatar: 'avatar' },
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
+    '@/lib/finding': load('lib/finding.ts', {}),
     'next/font/google': { Inter: () => ({ className: '' }) },
-    '@/lib/useSetupGate': { useSetupGate() {} },
+    '@/lib/useSetupGate': { useSetupGate() { throw Error('Home must allow unfinished setup'); } },
     'next/navigation': { useRouter: () => ({ push() {} }) },
     '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },
   }).default;
@@ -224,6 +225,15 @@ test('home shares partial-ballot progress and falls back to setup without an ope
   const text = n => n == null || typeof n === 'boolean' ? '' : typeof n !== 'object' ? String(n) : Array.isArray(n) ? n.map(text).join('') : text(n.props?.children);
   function render() { h.reset(); return page({ params: { id: '5' } }); }
   let tree = render();
+  assert.ok(text(tree).includes("Your setup isn't finished yet. Finish it so the group can find plans."));
+  assert.equal(nodes(tree).find(n => text(n) === 'Set up my plans' && n.props?.href).props.href, '/groups/5/setup');
+  data = { ...data, invite_code: 'WSP-TEST' };
+  tree = render();
+  assert.ok(nodes(tree).some(n => n.props?.['aria-label'] === 'Invite code'));
+  data = { ...data, members: data.members.map(m => ({ ...m, setup_done: true })) };
+  tree = render();
+  assert.ok(!text(tree).includes('Set up my plans'));
+  assert.ok(nodes(tree).some(n => n.props?.['aria-label'] === 'Invite code'));
   assert.ok(text(tree).includes('1 of 2 ready · voting'));
   assert.ok(text(tree).includes('Voted'));
   assert.ok(text(tree).includes('Not voted yet'));

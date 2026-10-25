@@ -539,3 +539,25 @@ test('generation uses saved preferences and persists a disclosed radius expansio
   assert.ok(writes.find(([sql]) => sql.startsWith('insert into plans'))[1][6].includes('Search expanded to 1.5 mi.'));
   assert.equal(writes.find(([sql]) => sql.startsWith('update plan_rounds set search_distance_mi'))[1][1], 1.5);
 });
+
+
+test('home action follows latest status and actual plans, independent of legacy city metadata', () => {
+  for (const legacy of [false, true]) {
+    for (const [status, count, label, destination, fresh] of [
+      [null, 0, 'Find plans', 'finding', false],
+      ['failed', 0, 'Find plans', 'finding', false],
+      ['failed', 2, 'Find plans', 'finding', false],
+      ['voting', 0, 'Find plans', 'finding', false],
+      ['abandoned', 0, 'Find plans', 'finding', false],
+      ['generating', 0, 'Finding plans…', 'finding', false],
+      ['voting', 3, 'Vote on plans', 'plans', false],
+      ['vetoed', 3, 'Find new plans', 'finding', true],
+      ['final', 3, 'Find new plans', 'finding', true],
+      ['confirmed', 3, 'Find new plans', 'finding', true],
+    ]) {
+      const round = status ? { status, search_city: legacy ? null : 'Houston, TX' } : null;
+      const action = finding.groupHomeAction(round, count);
+      assert.equal(action.label, label); assert.equal(action.destination, destination); assert.equal(action.fresh, fresh);
+    }
+  }
+});

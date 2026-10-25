@@ -1,5 +1,5 @@
 "use client";
-import { useSetupGate } from "@/lib/useSetupGate";
+import { groupHomeAction } from "@/lib/finding";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,6 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const { data: g, error } = useApi<any>(`/api/groups/${id}`, 4000, true);
   useFindingRedirect(id, g);
-  useSetupGate(id);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);
@@ -60,7 +59,8 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const isOwner = g?.isCreator === true;
   const soloOwner = isOwner && others.length === 0;
   const needsNewSearch = g?.finding?.needsNewSearch === true || g?.finding?.cityChanged === true;
-  const open = g?.roundOpen === true, final = g?.round?.status === "final";
+  const action = groupHomeAction(g?.finding?.round, g?.finding?.planCount ?? 0);
+  const open = g?.roundOpen === true;
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
   const ready = open ? g.voted : members.length - pending.length;
@@ -87,7 +87,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       : "Everyone has voted.";
   }
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
+    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
         <BackButton href="/groups" className="mb-3" />
         {g && <>
@@ -104,6 +104,10 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
           </div>
         </section>
+        {members.some(member => member.id === g.me && !member.setup_done) && <section aria-label="Finish your setup" className="flex flex-col gap-2.5">
+          <p className="text-sm text-secondary">Your setup isn't finished yet. Finish it so the group can find plans.</p>
+          <Link href={`/groups/${id}/setup`} className={`flex h-12 items-center justify-center rounded-[14px] bg-matcha px-4 text-base font-bold text-matchaink ${focus}`}>Set up my plans</Link>
+        </section>}
         {g.invite_code && <div>
           <section aria-label="Invite code" className="flex items-center justify-between gap-2 rounded-[20px] bg-panel px-5 py-[18px] text-white">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -129,9 +133,9 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
           {g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
-          {open && !needsNewSearch && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
-          {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {(!open || needsNewSearch) && <Link href={`/groups/${id}/finding${final || needsNewSearch ? "?new=1" : ""}`} className={primary}>{final || needsNewSearch ? "Find new plans" : "Find plans"}</Link>}
+          {action.final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
+          <Link href={`/groups/${id}/${action.destination}${action.fresh ? "?new=1" : ""}`} className={primary}>{action.label}</Link>
+          {needsNewSearch && action.destination === "plans" && <Link href={`/groups/${id}/finding`} className={primary}>Find plans</Link>}
           <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>

@@ -51,11 +51,11 @@ export default function Profile() {
     try { await patch({ avatar: await resizeAvatar(f) }); } catch (e: any) { setErr(e.message); }
   };
 
-  if (!data) return <Page variant="plain" tabs><p className="px-6 pt-6" role={error ? "alert" : "status"}>{error || "Loading…"}</p></Page>;
+  if (!data) return <Page variant="plain"><p className="px-6 pt-6" role={error ? "alert" : "status"}>{error || "Loading…"}</p></Page>;
   const linked = !!data.nessie_account_id;
   const row = "flex min-h-14 items-center justify-between gap-3 px-4 py-3";
   return (
-    <Page variant="plain" tabs>
+    <Page variant="plain">
       <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
       <header className="mb-5 flex items-center justify-between">
         <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Profile</h1>

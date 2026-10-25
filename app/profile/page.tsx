@@ -88,7 +88,7 @@ export default function Profile() {
   };
 
   if (!data) return (
-    <Page variant="plain" tabs>
+    <Page variant="plain">
       <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
         {error ? <p role="alert" className="text-sm font-semibold text-maroon">{error}</p> : (
           <Skeleton>
@@ -121,7 +121,7 @@ export default function Profile() {
   const row = "flex min-h-14 items-center justify-between gap-3 px-4 py-3";
 
   return (
-    <Page variant="plain" tabs>
+    <Page variant="plain">
       <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
         <header className="mb-5 flex items-center justify-between">
           <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Profile</h1>

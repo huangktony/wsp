@@ -1,3 +1,8 @@
+import {
+  includedInRound,
+  includedVoteSql,
+  type InclusionRound,
+} from "./roundParticipation";
 import { q, q1 } from "@/lib/db";
 import type { Tally } from "@/lib/votingRules";
 
@@ -24,14 +29,17 @@ export async function votingSchemaReady() {
   return schemaReady;
 }
 
-/** Approve and veto counts per plan, counting only people who are still in the group. */
+/**
+ * Approve and veto counts per plan, counting only people who are still in the group
+ * and included in the round (the same people settleRound counts as members).
+ */
 export async function planTallies(roundId: number): Promise<Tally[]> {
   return q<Tally>(
     `select p.id, p.est_cost_per_person::float cost,
        count(m.user_id) filter (where v.value='approve')::int approves,
        count(m.user_id) filter (where v.value='pass')::int vetoes
      from plans p join plan_rounds r on r.id=p.round_id
-     left join votes v on v.plan_id=p.id
+     left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")}
      left join memberships m on m.user_id=v.user_id and m.group_id=r.group_id
      where p.round_id=$1 group by p.id order by p.id`, [roundId]);
 }
@@ -45,20 +53,28 @@ export async function confirmedMemberIds(roundId: number | null): Promise<number
   return rows.map((row) => row.user_id);
 }
 
-/** Participation means at least one saved vote, not a completed ballot. Confirming is counted separately. */
-export async function getVotingParticipation(groupId: number, round: { id: number; status: string } | null) {
+/**
+ * Participation means at least one saved vote, not a completed ballot. Confirming is counted separately.
+ * Only members included in the round count.
+ */
+export async function getVotingParticipation(
+  groupId: number,
+  round: ({ id: number; status: string } & InclusionRound) | null,
+) {
   const participation = await q<{ user_id: number; has_voted: boolean }>(
     `select m.user_id, exists (
        select 1 from votes v join plans p on p.id=v.plan_id
        where v.user_id=m.user_id and p.round_id=$2
      ) has_voted
      from memberships m where m.group_id=$1`, [groupId, round?.id ?? null]);
-  const votedMemberIds = participation.filter(member => member.has_voted).map(member => member.user_id);
-  const confirmed = await confirmedMemberIds(round?.id ?? null);
+  const included = participation.filter(member => includedInRound(round, member.user_id));
+  const includedIds = new Set(included.map(member => member.user_id));
+  const votedMemberIds = included.filter(member => member.has_voted).map(member => member.user_id);
+  const confirmed = (await confirmedMemberIds(round?.id ?? null)).filter(id => includedIds.has(id));
   return {
     voted: votedMemberIds.length,
     confirmed: confirmed.length,
-    memberCount: participation.length,
+    memberCount: included.length,
     roundOpen: round?.status === "voting",
     votedMemberIds,
     confirmedMemberIds: confirmed,

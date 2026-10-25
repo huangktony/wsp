@@ -1,6 +1,10 @@
+import { mySetupDone, SETUP_REQUIRED_MESSAGE } from "./finding";
 import { api } from "./client";
 
 export type FindingGroup = {
+  redraw?: { locked: boolean; votes: number; members: number; needed: number; mine: boolean } | null;
+  me: number;
+  members: { id: number; setup_done: boolean }[];
   groupTier: string | null;
   finding: {
     cityChanged?: boolean;
@@ -44,8 +48,10 @@ export async function runFinding(
     update: (group: FindingGroup) => void;
     started: () => void;
     ready: () => void;
+    redraw?: () => void;
   },
   dependencies = { api, wait, now: Date.now },
+  requestNew = false,
 ) {
   const { api: request, wait: pause, now } = dependencies;
   const read = () =>
@@ -53,11 +59,17 @@ export async function runFinding(
 
   let group = await read();
   signal.throwIfAborted();
+  if (!mySetupDone(group)) throw new Error(SETUP_REQUIRED_MESSAGE);
   callbacks.update(group);
 
   const round = group.finding.round;
   const needsNewSearch =
     group.finding.cityChanged || group.finding.needsNewSearch;
+
+  if (round?.status === "final" && requestNew) {
+    callbacks.redraw?.();
+    return;
+  }
 
   // Final plans must go through the group redraw flow.
   // Voting plans can be reused while their search settings remain current.
@@ -73,23 +85,27 @@ export async function runFinding(
   const began = now();
   callbacks.started();
 
-  const claim =
-    !needsNewSearch && round?.status === "generating"
-      ? { roundId: round.id }
-      : await request<{ roundId: number }>(
-          `/api/groups/${id}/plans`,
-          "POST",
-          undefined,
-          signal,
-        );
+  // Always let the server validate/recover a generating round under its lock.
+  const claim = await request<{ roundId: number }>(
+    `/api/groups/${id}/plans`, "POST", undefined, signal,
+  );
 
+  const pollingBegan = now();
   while (true) {
     signal.throwIfAborted();
+    if (now() - pollingBegan >= 120000) {
+      throw new Error("Finding plans took too long. Try again.");
+    }
     group = await read();
     signal.throwIfAborted();
+    if (!mySetupDone(group)) throw new Error(SETUP_REQUIRED_MESSAGE);
     callbacks.update(group);
 
     const current = group.finding.round;
+    if (!current || current.id !== claim.roundId ||
+        (current.status !== "final" && (group.finding.cityChanged || group.finding.needsNewSearch))) {
+      throw new Error("The search changed while finding plans. Try again to see the latest plans.");
+    }
 
     if (current?.id === claim.roundId && current.status === "failed") {
       throw new Error(

@@ -1,4 +1,5 @@
 "use client";
+import { InclusionBanner } from "@/components/RoundInclusion";
 import Link from "next/link";
 import { Inter } from "next/font/google";
 import { use, useState } from "react";
@@ -54,7 +55,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   // The change being saved, shown right away instead of waiting for the server and the reload.
   const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
-  if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : data && data.round?.status !== "final" ? "No final plan yet." : <FinalSkeleton />}</Page></div>;
+  if (!data || !plan || !data.split) return <div className={typography}><Page back="/groups">{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : data && data.round?.status !== "final" ? "No final plan yet." : <FinalSkeleton />}</Page></div>;
 
   const { round, payments } = data;
   const split = draft
@@ -82,9 +83,10 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const maps = `https://www.google.com/maps/dir/${plan.stops.map((s: any) => encodeURIComponent(s.address ? `${s.place}, ${s.address}` : s.place)).join("/")}`;
 
   return (
-    <div className={typography}><Page back={`/groups/${id}`}>
+    <div className={typography}><Page back="/groups">
       {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
       {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
+      <InclusionBanner inclusion={data.inclusion} />
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>
@@ -182,7 +184,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
                 {note && <span className="block text-xs text-muted">{note}</span>}
               </span>
               <span className="text-[15px] font-bold tabular-nums">{money(x.amount)}</span>
-              {pay && <span className={pay.status === "paid" ? "chip" : "chip-pink"}>{pay.status === "paid" ? "PAID" : "OWED"}</span>}
+              {pay && <span className={pay.status === "paid" ? "chip" : "chip-pink"}>{pay.status === "paid" ? (pay.transfer_status && pay.transfer_status !== "completed" ? "PENDING" : "PAID") : "OWED"}</span>}
             </li>
           );
         })}
@@ -213,14 +215,15 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           <p role="status" className="rounded-2xl bg-orchid p-3 text-center text-sm font-semibold text-orchidink">{payer?.name ?? "The organizer"} sent you a reminder to pay back {money(myPayment.amount)}.</p>
         )}
         {sent && myPayment?.status === "owed" && (
-          <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
-            Pay {payer?.name} back {money(myPayment.amount)}
+          <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); setErr(""); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
+            {busy ? "Sending…" : `Pay ${payer?.name ?? "the organizer"} back ${money(myPayment.amount)}`}
           </button>
         )}
         {sent && <Link href="/groups" className="btn-ghost">Back to groups</Link>}
         <RedrawVote id={id} redraw={data.redraw} onChanged={reload} />
+        <Link href={`/groups/${id}/finding?new=1`} className="flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo">Find new plans</Link>
       </div>
-      <p className="mt-3 text-center text-xs text-muted">Demo only. No real money moves.</p>
+      <p className="mt-3 text-center text-xs text-muted">Demo bank (Nessie sandbox). No real money moves.</p>
     </Page></div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
-import { useSetupGate } from "@/lib/useSetupGate";
+import { groupHref, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
+import { RedrawVote } from "@/components/RedrawVote";
 import Link from "next/link";
 import { Inter } from "next/font/google";
 import { use, useEffect, useState } from "react";
@@ -13,10 +14,9 @@ const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 export default function Finding({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  useSetupGate(id, true);
   const [group, setGroup] = useState<FindingGroup | null>(null);
   const [step, setStep] = useState(0);
-  const [phase, setPhase] = useState<"checking" | "running" | "ready" | "error">("checking");
+  const [phase, setPhase] = useState<"checking" | "running" | "ready" | "error" | "redraw">("checking");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -41,19 +41,35 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
     const clear = () => { clearTimeout(timeout); if (ticker) clearInterval(ticker); };
     void runFinding(id, controller.signal, {
       update: setGroup,
+      redraw: () => { clear(); setPhase("redraw"); },
       started: () => {
         setPhase("running");
         setGroup(previous => previous ? { ...previous, finding: { ...previous.finding, planCount: 0 } } : previous);
         ticker = setInterval(() => setStep(value => Math.min(value + 1, 3)), 1400);
       },
       ready: () => { clear(); setStep(4); setPhase("ready"); },
-    }).catch(e => {
+    }, undefined, query.get("new") === "1").catch(e => {
       if (disposed) return;
-      clear(); setPhase("error");
+      clear();
+      if (e.message === SETUP_REQUIRED_MESSAGE) {
+        setPhase("checking");
+        router.replace(`${groupHref({ id })}?setupRequired=1`);
+        return;
+      }
+      setPhase("error");
       setError(controller.signal.aborted ? controller.signal.reason.message : e.message || "Couldn't make plans this time. Try again.");
     });
     return () => { disposed = true; clear(); controller.abort(); };
-  }, [id, attempt]);
+  }, [id, attempt, router]);
+
+  if (phase === "checking") return null;
+
+  if (phase === "redraw") return <main className={`${inter.className} mx-auto flex w-full max-w-[390px] flex-col gap-5 px-6 py-6 text-indigo`}>
+    <Link href={groupHref({ id, round: group?.finding.round })} className={`text-sm underline ${focus}`}>Back to final plan</Link>
+    <h1 className="font-[inherit] text-[28px] font-extrabold">Find new plans</h1>
+    <p className="text-sm text-secondary">New plans need a majority vote. Once payment requests are sent, the final plan is locked.</p>
+    <RedrawVote id={id} redraw={group?.redraw} onChanged={() => setAttempt(value => value + 1)} />
+  </main>;
 
   const details = group?.finding;
   const count = details?.memberCount;
@@ -68,9 +84,9 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
   ];
   const running = phase === "running";
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col bg-indigo text-white [--indigo:#28536B] [--pistachio:#CBE6C7] [--matcha:#8FB78F] [--orchid:#F3A5BC] [--pink:#F3A5BC] [--logo-ink:#28536B] [--azure:#B4CCCF] [--secondary:#35607A] [--matcha-ink:#1B3A1E] [--maroon:#8A1F47]`}>
+    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col bg-indigo text-white [--indigo:#28536B] [--pistachio:#CBE6C7] [--matcha:#8FB78F] [--orchid:#F3A5BC] [--pink:#F3A5BC] [--logo-ink:#28536B] [--azure:#B4CCCF] [--secondary:#35607A] [--matcha-ink:#1B3A1E] [--maroon:#8A1F47]`}>
       <div className="px-6 pt-14 sm:pt-6">
-        <Link href={`/groups/${id}`} aria-label="Back" className={`flex h-11 w-11 items-center justify-center rounded-full bg-white text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white`}>
+        <Link href={groupHref({ id, round: group?.finding.round })} aria-label="Back" className={`flex h-11 w-11 items-center justify-center rounded-full bg-white text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white`}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </Link>
       </div>

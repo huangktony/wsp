@@ -1,4 +1,5 @@
-import { fail, json, requireUser } from "@/lib/api";
+import { SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
+import { fail, json, requireUser, setupDone } from "@/lib/api";
 import { maskKey } from "@/lib/nessie";
 import { NoPlacesError, fillRound } from "@/lib/pipeline";
 import { RedrawError, toggleRedrawVote, undoRedraw } from "@/lib/redraw";
@@ -14,6 +15,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const uid = await requireUser();
   if (typeof uid !== "number") return uid;
   const id = Number((await params).id);
+  if (!(await setupDone(id, uid))) return fail(SETUP_REQUIRED_MESSAGE, 409);
   let result;
   try {
     result = await toggleRedrawVote(id, uid);
@@ -25,7 +27,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   try {
     await fillRound(result.roundId);
   } catch (e: any) {
-    await undoRedraw(result.oldRoundId);
+    await undoRedraw(result.oldRoundId, result.roundId);
     if (e instanceof NoPlacesError) return fail(e.message, 422);
     console.error(maskKey(`redraw failed: ${e?.message ?? e}`));
     return fail("Couldn't make new plans this time. Your final plan is unchanged, try again.", 502);

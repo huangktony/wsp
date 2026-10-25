@@ -13,6 +13,7 @@ function load(file, mocks) {
     exports,
     require: (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
       if (name === 'zod') return require('zod');
       throw new Error(`Unexpected import (no database access allowed): ${name}`);
     },
@@ -40,6 +41,7 @@ test('generator uses crypto.randomInt with the exact readable alphabet', () => {
 
 function createRoute(q1, generate = () => 'WSP-BCD', q = async () => []) {
   return load('app/api/groups/route.ts', {
+    '@/lib/pipeline': { settleRound: async () => 'voting' },
     '@/lib/db': { q, pool: { connect: async () => ({ release() {}, query: async (sql, params) => {
       if (sql.startsWith('insert into groups')) { const row = await q1(sql, params); return { rows: row ? [row] : [] }; }
       if (sql.startsWith('insert into memberships')) return { rows: await q(sql, params) };
@@ -93,6 +95,7 @@ test('unrelated database failures are not retried', async () => {
 test('unauthenticated creation never queries or generates a code', async () => {
   const unexpected = () => { throw new Error('Must not run'); };
   const route = load('app/api/groups/route.ts', {
+    '@/lib/pipeline': { settleRound: async () => 'voting' },
     '@/lib/db': { pool: { connect: unexpected }, q: unexpected },
     '@/lib/serpapi': { geocodeCity: unexpected },
     '@/lib/usCities': load('lib/usCities.ts', {}),
@@ -105,7 +108,7 @@ test('unauthenticated creation never queries or generates a code', async () => {
 test('join trims and case-folds new and legacy codes', async () => {
   for (const code of ['legacy', 'wsp-ab2']) {
     const route = load('app/api/groups/join/route.ts', {
-      '@/lib/api': api,
+      '@/lib/api': api, '@/lib/inviteCodeInput': load('lib/inviteCodeInput.ts', {}),
       '@/lib/db': { q: async () => [], q1: async (sql, params) => {
         assert.match(sql, /upper\(invite_code\)=\$1/);
         assert.equal(params[0], code.toUpperCase());
@@ -119,5 +122,38 @@ test('join trims and case-folds new and legacy codes', async () => {
 test('preview endpoint and client preview flow are removed', () => {
   assert.equal(fs.existsSync('app/api/groups/invite-code/route.ts'), false);
   const page = fs.readFileSync('app/groups/new/page.tsx', 'utf8');
-  assert.doesNotMatch(page, /inviteCode|invite-code|clipboard|Copied|INVITE CODE|Code will be created/);
+  assert.doesNotMatch(page, /invite-code|navigator\.clipboard|Copied|INVITE CODE|Code will be created/);
+});
+
+
+test('fixed-prefix input normalizes suffixes and reports complete full codes', () => {
+  const { formatInviteSuffix, buildInviteCode, isCompleteInviteCode } = load('lib/inviteCodeInput.ts', {});
+  for (const [raw, expected] of [
+    ['', ''], ['w', ''], ['WS', ''], ['WSP', ''], ['WSP-', ''], ['!', ''],
+    ['4k2', '4K2'], ['wsp-4k2', '4K2'], [' WSP 4K2 ', '4K2'], ['wsp4k2', '4K2'],
+    ['4K2X', '4K2X'], ['4K2XY', '4K2X'], ['4!k2', '4K2'],
+  ]) assert.equal(formatInviteSuffix(raw), expected);
+  assert.equal(formatInviteSuffix(''.slice(0, -1)), '');
+  assert.equal(buildInviteCode(''), 'WSP-');
+  assert.equal(buildInviteCode('4K2'), 'WSP-4K2');
+  assert.equal(isCompleteInviteCode(buildInviteCode('4K')), false);
+  assert.equal(isCompleteInviteCode(buildInviteCode('4K2')), true);
+  assert.equal(isCompleteInviteCode(buildInviteCode('4K2X')), true);
+});
+
+test('join accepts dashless, lowercase, and suffix aliases without truncating longer codes', async () => {
+  for (const code of ['wsp4k2', '4k2', 'wsp 4k2', 'WSP-4K2', ' wsp-4k2 ']) {
+    let writes = 0;
+    const route = load('app/api/groups/join/route.ts', {
+      '@/lib/api': api, '@/lib/inviteCodeInput': load('lib/inviteCodeInput.ts', {}),
+      '@/lib/db': {
+        q1: async (sql, params) => params[0] === 'WSP-4K2' ? { id: 42 } : null,
+        q: async () => { writes++; return []; },
+      },
+    });
+    assert.equal((await route.POST(request({ code }))).body.id, 42);
+    assert.equal(writes, 1);
+  }
+  const { normalizeInviteCode } = load('lib/inviteCodeInput.ts', {});
+  assert.equal(normalizeInviteCode('WSP-4K2XY'), null);
 });

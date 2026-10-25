@@ -1,60 +1,45 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Inter } from "next/font/google";
 import { Avatar } from "@/components/Avatar";
 import { Page } from "@/components/Page";
-import { TierBadge } from "@/components/TierBadge";
 import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
-import { api, INTERESTS, toggle, useApi } from "@/lib/client";
+import { api, useApi } from "@/lib/client";
 import { resizeAvatar } from "@/lib/image";
+import { getThemePref, setThemePref, type ThemePref } from "@/lib/theme";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo";
 const pill = `flex min-h-11 items-center justify-center rounded-full border border-line px-4 text-sm font-semibold ${focus}`;
 const icon = `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-mint ${focus}`;
+const card = "divide-y divide-azure overflow-hidden rounded-2xl border border-azure bg-pistachio";
+const row = "flex min-h-14 items-center justify-between gap-3 px-4 py-3";
+const THEMES: { value: ThemePref; label: string }[] = [{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }];
+
+/** The account stores one name; the first word is the first name and the rest is the last name. */
+function splitName(name: string) {
+  const [first = "", ...rest] = name.trim().split(/\s+/);
+  return { first, last: rest.join(" ") };
+}
+
+const Pencil = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+);
 
 export default function Profile() {
+  const r = useRouter();
   const { data, error, reload } = useApi<any>("/api/me");
-  const [it, setIt] = useState<string[]>([]);
-  const [mi, setMi] = useState(10);
-  const [status, setStatus] = useState<"" | "saving" | "saved">("");
-  const dirty = useRef(false);
   const [menu, setMenu] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<"" | "first" | "last">("");
   const [draft, setDraft] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState<ThemePref | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (data && !dirty.current) {
-      setIt(data.interests);
-      setMi(data.max_distance_mi);
-    }
-  }, [data]);
-
-  // Interests and distance save themselves shortly after the last change.
-  useEffect(() => {
-    if (!dirty.current) return;
-    setStatus("saving");
-    const t = setTimeout(() => {
-      api("/api/me", "PUT", { interests: it, max_distance_mi: mi })
-        .then(() => setStatus("saved"))
-        .catch((e) => {
-          setStatus("");
-          setErr(e.message);
-        });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [it, mi]);
-
-  const edit = (fn: () => void) => {
-    dirty.current = true;
-    setErr("");
-    fn();
-  };
+  useEffect(() => setTheme(getThemePref()), []);
 
   const patch = async (body: { name?: string; avatar?: string | null }) => {
     setBusy(true);
@@ -71,10 +56,19 @@ export default function Profile() {
     }
   };
 
+  const startEdit = (field: "first" | "last") => {
+    setDraft(splitName(data.name)[field]);
+    setEditing(field);
+    setErr("");
+  };
+
   const saveName = async () => {
-    const name = draft.trim();
-    if (!name) return setErr("Name can't be empty.");
-    if (await patch({ name })) setEditing(false);
+    const value = draft.trim();
+    const { first, last } = splitName(data.name);
+    if (editing === "first" && !value) return setErr("First name can't be empty.");
+    if (editing === "first" && /\s/.test(value)) return setErr("First name should be one word.");
+    const name = editing === "first" ? `${value} ${last}` : `${first} ${value}`;
+    if (await patch({ name: name.trim() })) setEditing("");
   };
 
   const pick = async (f?: File) => {
@@ -87,6 +81,10 @@ export default function Profile() {
     }
   };
 
+  const chooseTheme = (t: ThemePref) => { setTheme(t); setThemePref(t); };
+
+  const logOut = () => api("/api/auth/logout", "POST").then(() => { r.push("/login"); r.refresh(); });
+
   if (!data) return (
     <Page variant="plain">
       <div className={`${inter.className} px-6 pt-6 text-indigo`}>
@@ -94,21 +92,12 @@ export default function Profile() {
           <Skeleton>
             <SkeletonBlock className="mb-4 h-9 w-1/2" />
             <div className="space-y-6">
-              <SkeletonBlock className="h-[58px]" />
-              <div>
-                <SkeletonBlock className="mb-2 h-5 w-24" />
-                <div className="flex gap-2">
-                  <SkeletonBlock className="h-10 w-20 !rounded-full" />
-                  <SkeletonBlock className="h-10 w-24 !rounded-full" />
-                  <SkeletonBlock className="h-10 w-28 !rounded-full" />
-                </div>
+              <div className="flex items-center gap-4">
+                <SkeletonBlock className="h-16 w-16 !rounded-full" />
+                <SkeletonBlock className="h-6 w-40" />
               </div>
-              <div>
-                <SkeletonBlock className="mb-2 h-5 w-36" />
-                <SkeletonBlock className="h-4" />
-              </div>
-              <SkeletonBlock className="h-14" />
-              <SkeletonBlock className="h-14" />
+              <SkeletonBlock className="h-56" />
+              <SkeletonBlock className="h-24" />
               <SkeletonBlock className="h-14" />
             </div>
           </Skeleton>
@@ -117,21 +106,31 @@ export default function Profile() {
     </Page>
   );
 
-  const linked = !!data.nessie_account_id;
-  const row = "flex min-h-14 items-center justify-between gap-3 px-4 py-3";
+  const { first, last } = splitName(data.name);
+  const nameRow = (field: "first" | "last", label: string, value: string) => (
+    <div className={row}>
+      {editing === field ? (
+        <form className="flex w-full items-center gap-2" onSubmit={(e) => { e.preventDefault(); saveName(); }}>
+          <input autoFocus aria-label={label} value={draft} maxLength={40} onChange={(e) => setDraft(e.target.value)} className="h-11 min-w-0 flex-1 rounded-full border border-line bg-surface px-4 text-ink" />
+          <button type="submit" disabled={busy} className={`${pill} border-matcha bg-matcha text-matchaink`}>Save</button>
+          <button type="button" onClick={() => { setEditing(""); setErr(""); }} className={pill}>Cancel</button>
+        </form>
+      ) : (
+        <>
+          <div className="min-w-0">
+            <span className="block text-sm text-secondary">{label}</span>
+            <span className="block break-words font-semibold">{value || "—"}</span>
+          </div>
+          <button type="button" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => startEdit(field)} className={icon}><Pencil /></button>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <Page variant="plain">
       <div className={`${inter.className} px-6 pt-6 text-indigo`}>
-        <header className="mb-5 flex items-center justify-between">
-          <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Profile</h1>
-          <Link href="/settings" aria-label="Settings" className={icon}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-            </svg>
-          </Link>
-        </header>
+        <h1 className="mb-5 font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Profile</h1>
 
         <div className="space-y-5">
           <div className="glass flex items-center gap-4 !p-3 text-indigo">
@@ -145,44 +144,46 @@ export default function Profile() {
               </div>}
               <input ref={file} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
             </div>
-            <div className="min-w-0 flex-1">
-              {editing ? (
-                <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); saveName(); }}>
-                  <input autoFocus aria-label="Name" value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} className="h-11 min-w-0 flex-1 rounded-full border border-line bg-surface px-4 text-ink" />
-                  <button type="submit" disabled={busy} className={`${pill} border-matcha bg-matcha text-matchaink`}>Save</button>
-                  <button type="button" onClick={() => { setEditing(false); setErr(""); }} className={pill}>Cancel</button>
-                </form>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <h2 className="min-w-0 break-words font-[inherit] text-xl font-extrabold">{data.name}</h2>
-                  <button type="button" aria-label="Edit name" onClick={() => { setDraft(data.name); setEditing(true); setErr(""); }} className={icon}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
-                  </button>
-                </div>
-              )}
-              <p className="truncate text-sm text-secondary">{data.email}</p>
-            </div>
+            <h2 className="min-w-0 break-words font-[inherit] text-xl font-extrabold">{data.name}</h2>
           </div>
           {err && <p role="alert" className="text-sm font-semibold text-maroon">{err}</p>}
 
-          <section className="divide-y divide-azure overflow-hidden rounded-2xl border border-azure bg-pistachio">
-            <div className={row}><span className="font-semibold">Bank account</span>{linked ? <span className="font-semibold">Linked ✓</span> : <Link href="/spending" className="font-semibold underline">Link bank</Link>}</div>
-            <div className={row}><span className="font-semibold">Comfort level</span><span className="rounded-full bg-surface"><TierBadge tier={data.budget_tier} /></span></div>
-            <div className="px-4 py-3">
-              <span className="label text-secondary">Usual interests</span>
-              <div className="flex flex-wrap gap-2">
-                {INTERESTS.map((s) => <button key={s} type="button" aria-pressed={it.includes(s)} onClick={() => edit(() => setIt(toggle(it, s)))} className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${focus} ${it.includes(s) ? "border-matcha bg-matcha text-matchaink" : "border-outline"}`}>{s}</button>)}
+          <section aria-labelledby="account-info">
+            <h3 id="account-info" className="label font-[inherit] !text-lg text-secondary">Account information</h3>
+            <div className={card}>
+              {nameRow("first", "First name", first)}
+              {nameRow("last", "Last name", last)}
+              <div className={row}>
+                <div className="min-w-0">
+                  <span className="block text-sm text-secondary">Email</span>
+                  <span className="block truncate font-semibold">{data.email}</span>
+                </div>
               </div>
-            </div>
-            <div className="px-4 py-3">
-              <label className="label text-secondary" htmlFor="max-distance">Max distance: {mi} mi</label>
-              <input id="max-distance" type="range" min={1} max={30} value={mi} onChange={(e) => edit(() => setMi(+e.target.value))} className="range-wsp w-full" style={{ "--fill": `${(mi - 1) / 29 * 100}%` } as React.CSSProperties} />
+              <div className={row}>
+                <div className="min-w-0">
+                  <span className="block text-sm text-secondary">Password</span>
+                  <span className="block font-semibold tracking-widest" aria-label="Password hidden">••••••••</span>
+                </div>
+              </div>
             </div>
           </section>
 
-          <p className="rounded-2xl border border-dashed border-outline p-4 text-sm text-secondary"><span className="font-bold text-indigo">Your privacy.</span> Friends only see the lowest comfort level in a group. Your balance and purchases stay private.</p>
+          <section aria-labelledby="account-settings">
+            <h3 id="account-settings" className="label font-[inherit] !text-lg text-secondary">Account settings</h3>
+            <div className={card}>
+              <div className="px-4 py-3">
+                <span id="theme" className="mb-2 block text-sm text-secondary">Theme</span>
+                <div role="radiogroup" aria-labelledby="theme" className="flex gap-1 rounded-full border border-line bg-surface p-1">
+                  {THEMES.map((t) => (
+                    <button key={t.value} type="button" role="radio" aria-checked={theme === t.value} onClick={() => chooseTheme(t.value)} className={`min-h-11 flex-1 rounded-full text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo ${theme === t.value ? "bg-sage text-sageink" : "text-ink"}`}>{t.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <p role="status" aria-live="polite" className="h-5 text-center text-sm text-secondary">{status === "saving" ? "Saving…" : status === "saved" ? "Saved ✓" : ""}</p>
+          <button type="button" className={`flex h-14 w-full items-center justify-center rounded-full border border-line bg-surface text-base font-semibold text-maroon active:opacity-80 ${focus}`} onClick={logOut}>Log off</button>
+          <div className="h-24" aria-hidden="true" />
         </div>
       </div>
     </Page>

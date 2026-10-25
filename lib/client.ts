@@ -1,15 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export async function api<T = any>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const res = await fetch(path, { method, cache: "no-store", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+export async function api<T = any>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(path, { method, signal, cache: "no-store", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && typeof window !== "undefined") window.location.href = "/login";
   if (!res.ok) throw new Error(data.error ?? "something went wrong");
   return data;
 }
 
-export function useApi<T = any>(path: string, pollMs = 0) {
+export function useApi<T = any>(path: string, pollMs = 0, pauseWhenHidden = false) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
   const requestId = useRef(0);
@@ -28,14 +28,14 @@ export function useApi<T = any>(path: string, pollMs = 0) {
     const refresh = () => { if (document.visibilityState === "visible") void load(); };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
-    const t = pollMs ? setInterval(load, pollMs) : undefined;
+    const t = pollMs ? setInterval(pauseWhenHidden ? refresh : load, pollMs) : undefined;
     return () => {
       requestId.current++;
       if (t) clearInterval(t);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [load, pollMs]);
+  }, [load, pollMs, pauseWhenHidden]);
   return { data, error, reload: load };
 }
 

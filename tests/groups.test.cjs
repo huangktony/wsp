@@ -54,6 +54,7 @@ function fixture(memberIds = [1, 2, 3]) {
   const mocks = { '@/lib/db': db, '@/lib/api': api, zod: require('zod') };
   mocks['@/lib/groups'] = load('lib/groups.ts', mocks);
   mocks['@/lib/voting'] = { getVotingParticipation: async () => ({ votedMemberIds: [], voted: 0, memberCount: s.members.size, roundOpen: false }) };
+  mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
   const del = load('app/api/groups/[id]/route.ts', mocks).DELETE;
   const leave = load('app/api/groups/[id]/leave/route.ts', mocks).POST;

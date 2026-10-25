@@ -236,12 +236,15 @@ test('home shares partial-ballot progress and falls back to setup without an ope
   tree = render();
   assert.ok(text(tree).includes('2 of 2 ready · voting'));
   assert.ok(text(tree).includes('Everyone has voted.'));
-  for (const status of ['final', null]) {
+  // The progress card names the phase it is counting; the ready count itself does not change.
+  const phase = { final: 'final plan picked', generating: 'finding plans', null: 'setup' };
+  for (const status of ['final', 'generating', null]) {
     f.setRound(status);
     data = await f.home();
     assert.equal(data.roundOpen, false);
     tree = render();
-    assert.ok(text(tree).includes('0 of 2 ready · setup'));
+    assert.ok(text(tree).includes(`0 of 2 ready · ${phase[status]}`), `${status}: ${text(tree).slice(0, 200)}`);
+    assert.ok(!(status === 'final' && text(tree).includes('· setup')), 'a final plan must not say setup');
     assert.ok(text(tree).includes('Setting up'));
     assert.equal(nodes(tree).find(n => n.props?.role === 'progressbar').props['aria-valuenow'], 0);
   }

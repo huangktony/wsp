@@ -15,7 +15,8 @@ const avatarColors = ["bg-matcha text-matchaink", "bg-orchid text-orchidink", "b
 const primary = `flex min-h-[54px] w-full items-center justify-center rounded-[14px] bg-matcha px-4 py-3 text-[17px] font-bold text-matchaink ${focus}`;
 
 const pill = `flex min-h-[48px] w-full items-center justify-center rounded-full px-4 py-3 text-base font-bold disabled:opacity-60 ${focus}`;
-const danger = `${pill} bg-maroon text-white`;
+// text-surface is white in light mode and the dark surface in dark mode, where maroon turns into a light pink.
+const danger = `${pill} bg-maroon text-surface`;
 const quiet = `${pill} border border-outline bg-transparent text-indigo`;
 
 type Member = { id: number; name: string; setup_done: boolean; has_voted: boolean };
@@ -59,6 +60,8 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const isOwner = g?.isCreator === true;
   const soloOwner = isOwner && others.length === 0;
   const open = g?.roundOpen === true, final = g?.round?.status === "final";
+  // What the progress card is counting. The ready count itself is unchanged.
+  const phase = final ? "final plan picked" : open ? "voting" : g?.round?.status === "generating" ? "finding plans" : "setup";
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
   const ready = open ? g.voted : members.length - pending.length;
@@ -106,7 +109,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       )) : <>
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {open ? "voting" : "setup"}</span></span>
+            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {phase}</span></span>
           </div>
           <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-surface">
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />

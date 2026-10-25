@@ -53,8 +53,9 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
       throw Error(`Unexpected query: ${sql}`);
     },
   };
-  const mocks = { '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting' } };
+  const mocks = { '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
+  mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
   mocks['@/lib/groups'] = { deleteGroup: async () => ({ ok: true }) };
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
@@ -143,6 +144,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     plans: [{ id: 101, my_vote: null, title: 'One', cost: 10, stops: [] }, { id: 102, my_vote: null, title: 'Two', cost: 10, stops: [] }], voted: 0, memberCount: 2 };
   let current = structuredClone(server), failNext = false, release;
   const page = load('app/groups/[id]/plans/page.tsx', {
+    'next/font/google': { Inter: () => ({ className: '' }) },
     react: { ...h.react, use: p => p, useMemo: fn => fn() },
     'react/jsx-runtime': require('react/jsx-runtime'),
     'next/navigation': { useRouter: () => ({ replace() {} }) },
@@ -209,6 +211,8 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     react: { ...h.react, use: p => p },
     'react/jsx-runtime': require('react/jsx-runtime'),
     'next/link': { default: 'a' },
+    '@/components/BackButton': { BackButton: 'a' },
+    '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
     'next/navigation': { useRouter: () => ({ push() {} }) },
     '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },

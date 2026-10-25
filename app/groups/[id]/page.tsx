@@ -1,4 +1,5 @@
 "use client";
+import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
@@ -19,7 +20,8 @@ type Member = { id: number; name: string; setup_done: boolean; has_voted: boolea
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: g, error } = useApi<any>(`/api/groups/${id}`, 5000);
+  const { data: g, error } = useApi<any>(`/api/groups/${id}`, 4000, true);
+  useFindingRedirect(id, g);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);
@@ -124,7 +126,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
           {open && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {!open && <Link href={`/groups/${id}/finding`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
+          {!open && <Link href={`/groups/${id}/finding${final ? "?new=1" : ""}`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
           <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>

@@ -1,4 +1,5 @@
 "use client";
+import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
@@ -11,6 +12,8 @@ import type { Tier } from "@/lib/tiers";
 export default function Setup({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const r = useRouter();
+  const { data: group } = useApi<any>(`/api/groups/${id}`, 4000, true);
+  useFindingRedirect(id, group);
   const { data } = useApi<any>(`/api/groups/${id}/me`);
   // Filled in after linking on this page, so the form below is not reset by a reload.
   const [linked, setLinked] = useState<{ tier: Tier; avg: number | null } | null>(null);

@@ -1,3 +1,5 @@
+import { bestSlot } from "./finding";
+export { bestSlot } from "./finding";
 import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
 import { categoriesFor, findPlaces, type Place } from "./serpapi";
@@ -15,14 +17,6 @@ import { splitAmounts, type SplitMode } from "./split";
 
 /** Nothing within the group budget was found. The message is shown to the user as is. */
 export class NoPlacesError extends Error {}
-
-/** Availability is a list of slot strings like "Fri evening". Pick the slot shared by most members. */
-export function bestSlot(avails: string[][]): { slot: string; free: number } {
-  const count = new Map<string, number>();
-  for (const a of avails) for (const s of a) count.set(s, (count.get(s) ?? 0) + 1);
-  const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
-  return top ? { slot: top[0], free: top[1] } : { slot: "Sat evening", free: avails.length };
-}
 
 /**
  * Claims a new round for the group, or returns the round already in progress.

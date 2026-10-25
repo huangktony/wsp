@@ -1,10 +1,14 @@
 "use client";
 import Link from "next/link";
+import { Inter } from "next/font/google";
 import { use, useState } from "react";
 import { Page, Err } from "@/components/Page";
 import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
 import { splitAmounts, type SplitMode } from "@/lib/split";
+
+const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
+const typography = `${inter.className} [&>main>a:first-child]:text-[15px] [&>main>a:first-child]:text-secondary`;
 
 // Screen 10: Final plan and split. Itinerary -> split (even / by item) -> payment requests -> hangout confirmed.
 const money = (n: number | null | undefined) => `$${(Number(n) || 0).toFixed(2)}`;
@@ -28,7 +32,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   // The change being saved, shown right away instead of waiting for the server and the reload.
   const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
-  if (!data || !plan || !data.split) return <Page back={`/groups/${id}`}>{error || (data && data.round?.status !== "final" ? "No final plan yet." : "Loading…")}</Page>;
+  if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error || (data && data.round?.status !== "final" ? "No final plan yet." : "Loading…")}</Page></div>;
 
   const { round, payments } = data;
   const split = draft
@@ -50,19 +54,19 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const maps = `https://www.google.com/maps/dir/${plan.stops.map((s: any) => encodeURIComponent(s.address ? `${s.place}, ${s.address}` : s.place)).join("/")}`;
 
   return (
-    <Page back={`/groups/${id}`}>
+    <div className={typography}><Page back={`/groups/${id}`}>
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>
-          <h1 className="mt-3 text-3xl font-bold">Hangout confirmed</h1>
+          <h1 className="mt-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">Hangout confirmed</h1>
           <p className="text-muted">Everyone has the plan and their payment request.</p>
         </div>
       ) : (
-        <div><span className="chip">Winner · {plan.approve} of {data.memberCount} approved</span></div>
+        <div><span className="chip text-[13px] font-bold">Winner · {plan.approve} of {data.memberCount} approved</span></div>
       )}
 
-      <h2 className={`${sent ? "text-xl" : "mt-2 text-3xl"} font-bold`}>{plan.title}</h2>
-      <p className="mb-4 text-muted">{slotLabel(round.slot, round.created_at)}</p>
+      <h2 className={`${sent ? "" : "mt-2"} font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo`}>{plan.title}</h2>
+      <p className="mb-4 text-[15px] text-secondary">{slotLabel(round.slot, round.created_at)}</p>
 
       {/* Itinerary */}
       <ol className="card mb-3">
@@ -71,13 +75,13 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           return (
             <li key={i} className="flex gap-3">
               <div className="flex w-16 shrink-0 flex-col items-center">
-                <span className="text-xs font-bold">{s.time}</span>
+                <span className="text-sm font-bold text-secondary">{s.time}</span>
                 {i < plan.stops.length - 1 && <span className="mt-1 w-0.5 flex-1 bg-line" />}
               </div>
               <div className={`flex-1 pb-4 ${skipping ? "opacity-50" : ""}`}>
-                <p className="font-bold">{s.place}</p>
-                {s.address && <p className="text-sm text-muted">{s.address}</p>}
-                <p className="text-sm font-semibold text-sageink">~${Number.isInteger(s.cost) ? s.cost : Number(s.cost).toFixed(2)} each</p>
+                <p className="text-base font-bold">{s.place}</p>
+                {s.address && <p className="text-sm text-secondary">{s.address}</p>}
+                <p className="text-sm font-semibold text-secondary">~${Number.isInteger(s.cost) ? s.cost : Number(s.cost).toFixed(2)} each</p>
                 {!sent && plan.stops.length > 1 && (
                   <label className="mt-1 flex items-center gap-2 text-sm text-muted">
                     <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked }, { skips: e.target.checked ? [...me.skips, i] : me.skips.filter((k: number) => k !== i) })} />
@@ -96,8 +100,8 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
 
       {/* Split */}
       <section className="rounded-card bg-panel p-5 text-white">
-        <p className="text-sm opacity-80">Estimated total · {going} going</p>
-        <p className="font-display text-4xl font-bold">{money(split.total)}</p>
+        <p className="text-[15px] font-bold opacity-80">Estimated total · {going} going</p>
+        <p className="text-[15px] font-bold tabular-nums">{money(split.total)}</p>
         <p className="text-sm opacity-80">{payer?.user_id === data.me ? "You pay" : `${payer?.name ?? "The organizer"} pays`} up front, everyone pays back via Nessie.</p>
       </section>
 
@@ -105,7 +109,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-mintsoft p-1">
           {([["even", "Split evenly"], ["items", "By item"]] as const).map(([m, label]) => (
             <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => split.mode !== m && act({ action: "mode", mode: m }, { mode: m })}
-              className={`h-11 rounded-xl text-sm transition-colors ${split.mode === m ? "bg-sage font-bold text-sageink shadow-md" : "font-semibold text-muted"} ${!data.isPayer ? "cursor-default" : ""}`}>
+              className={`h-11 rounded-xl text-[15px] font-bold transition-colors ${split.mode === m ? "bg-sage text-sageink shadow-md" : "text-muted"} ${!data.isPayer ? "cursor-default" : ""}`}>
               {split.mode === m && <span aria-hidden>✓ </span>}{label}
             </button>
           ))}
@@ -124,10 +128,10 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
             <li key={x.user_id} className="flex items-center gap-3 px-4 py-3">
               <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-full bg-mint text-xs font-bold text-sageink">{x.name.split(/\s+/).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
               <span className="flex-1">
-                <span className="block font-semibold">{x.name}{x.user_id === data.me && " (you)"}</span>
+                <span className="block text-[15px] font-normal">{x.name}{x.user_id === data.me && " (you)"}</span>
                 {note && <span className="block text-xs text-muted">{note}</span>}
               </span>
-              <span className="font-bold">{money(x.amount)}</span>
+              <span className="text-[15px] font-bold tabular-nums">{money(x.amount)}</span>
               {pay && <span className={pay.status === "paid" ? "chip" : "chip-pink"}>{pay.status === "paid" ? "PAID" : "OWED"}</span>}
             </li>
           );
@@ -137,7 +141,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       <Err msg={err} />
       <div className="mt-5 space-y-3">
         {!sent && data.isPayer && (
-          <button className="btn" disabled={busy || !others.length} onClick={() => act({ action: "send" }, null)}>
+          <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" }, null)}>
             Send {others.length} {others.length === 1 ? "request" : "requests"} via Nessie
           </button>
         )}
@@ -146,13 +150,13 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           <p className="text-center text-sm font-semibold">Paid back {paid.length} of {payments.length}{pending > 0 && ` · ${money(pending)} pending`}</p>
         )}
         {sent && myPayment?.status === "owed" && (
-          <button className="btn" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
+          <button className="btn text-[17px] font-bold" disabled={busy} onClick={() => { setBusy(true); api(`/api/payments/${myPayment.id}/mark-paid`, "POST").then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); }}>
             Pay {payer?.name} back {money(myPayment.amount)}
           </button>
         )}
         {sent && <Link href="/groups" className="btn-ghost">Back to groups</Link>}
       </div>
       <p className="mt-3 text-center text-xs text-muted">Demo only. No real money moves.</p>
-    </Page>
+    </Page></div>
   );
 }

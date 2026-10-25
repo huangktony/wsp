@@ -1,7 +1,7 @@
 import { getVotingParticipation } from "@/lib/voting";
 import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
-import { computeSplit, fillRound, settleRound, startRound } from "@/lib/pipeline";
+import { NoPlacesError, computeSplit, fillRound, settleRound, startRound, withStopCosts } from "@/lib/pipeline";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -16,7 +16,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   if (!r.created) return json({ roundId: r.roundId, status: r.status });
   try {
     await fillRound(r.roundId);
-  } catch {
+  } catch (e) {
+    // Nothing fit the budget: say so plainly. The finding screen shows this message with a Try again button.
+    if (e instanceof NoPlacesError) return fail(e.message, 422);
     return fail("couldn't make plans this time. Try again.", 502);
   }
   return json({ roundId: r.roundId, status: "voting" });
@@ -49,6 +51,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
        max(v.value) filter (where v.user_id=$2) my_vote
      from plans p left join votes v on v.plan_id=p.id where p.round_id=$1 group by p.id order by p.id`, [round.id, uid]);
   for (const p of plans) {
+    p.stops = withStopCosts(p.stops, p.cost);
     p.my_vote = p.my_vote === "pass" ? "veto" : p.my_vote;
     if (open) { delete p.approve; delete p.veto; }
   }

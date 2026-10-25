@@ -1,6 +1,7 @@
 import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
-import { categoriesFor, estCost, findPlaces, type Place } from "./serpapi";
+import { categoriesFor, findPlaces, type Place } from "./serpapi";
+import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
 
 /*
@@ -10,6 +11,9 @@ import { generatePlans } from "./gemini";
  *   generating -> failed               (generation crashed or stalled)
  * After final, the payer (group creator) picks even / by item split and sends requests (requests_sent).
  */
+
+/** Nothing within the group budget was found. The message is shown to the user as is. */
+export class NoPlacesError extends Error {}
 
 /** Availability is a list of slot strings like "Fri evening". Pick the slot shared by most members. */
 export function bestSlot(avails: string[][]): { slot: string; free: number } {
@@ -51,7 +55,7 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
 }
 
 /** Runs the engine for a claimed round: shared slot -> group tier -> places -> 3 plans -> open voting. */
-export async function fillRound(roundId: number): Promise<void> {
+export async function fillRound(roundId: number, find: typeof findPlaces = findPlaces): Promise<void> {
   try {
     const round = await q1<any>("select r.id,r.group_id,r.excluded,g.city,g.lat,g.lng,g.vote_hours from plan_rounds r join groups g on g.id=r.group_id where r.id=$1", [roundId]);
     const members = await q<any>("select m.availability, u.interests from memberships m join users u on u.id=m.user_id where m.group_id=$1", [round.group_id]);
@@ -65,17 +69,19 @@ export async function fillRound(roundId: number): Promise<void> {
     const interests = shared.length ? shared : [...new Set(sets.flat())];
 
     const excluded = new Set<string>(round.excluded ?? []);
-    const found = await findPlaces(categoriesFor(interests), round.lat, round.lng, tier);
+    const found = await find(categoriesFor(interests), round.lat, round.lng, tier);
     const fresh = found.filter((p) => !excluded.has(p.name));
     // If leaving out vetoed places empties the list, reuse them rather than show nothing.
     const places = fresh.length >= 2 ? fresh : found;
     const drafts = await generatePlans({ city: round.city, slot, tier, interests, places, avoid: [...excluded] });
+    if (!drafts.length) throw new NoPlacesError(`No places found within the ${tier} budget near ${round.city}. Try more interests or a bigger distance.`);
 
     const byName = new Map(places.map((p) => [p.name.toLowerCase(), p] as [string, Place]));
     for (const d of drafts) {
       const stops = enrichStops(d.stops, d.est_cost_per_person, byName);
-      const total = stops.reduce((s, x) => s + x.cost, 0) || d.est_cost_per_person;
-      const price = total <= 20 ? "$" : total <= 40 ? "$$" : "$$$";
+      // One definition: the cost is the sum of the stop costs, the level is the most expensive stop.
+      const total = stops.reduce((s, x) => s + x.cost, 0);
+      const price = planLevel(stops);
       const why = free < basis.length ? `${d.why_fits} ${free} of ${basis.length} are free ${slot}.` : d.why_fits;
       await q("insert into plans(round_id,title,summary,stops,est_cost_per_person,price_level,why_fits) values($1,$2,$3,$4,$5,$6,$7)",
         [roundId, d.title, d.summary, JSON.stringify(stops), total, price, why]);
@@ -88,18 +94,27 @@ export async function fillRound(roundId: number): Promise<void> {
   }
 }
 
-export type Stop = { place: string; time: string; address?: string; category?: string; price?: string; cost: number };
+export type Stop = { place: string; time: string; address?: string; category?: string; price?: string; cost: number; estimated?: boolean };
 
-/** Adds address/category and a per-person cost to each stop. Stop costs add up to the plan's estimate. */
+/** Adds address, category, price and a per-person cost to each stop. The plan's cost is the sum of these. */
 function enrichStops(stops: { place: string; time: string }[], planCost: number, byName: Map<string, Place>): Stop[] {
-  const out = stops.map((s) => {
+  return stops.map((s) => {
     const p = byName.get(s.place.toLowerCase());
-    return { ...s, address: p?.address, category: p?.category, price: p?.price, cost: p ? estCost(p.price) : 0 };
+    // An unknown place should not get this far (plans are checked against the candidates), so this only spreads the model's own estimate.
+    return { ...s, address: p?.address, category: p?.category, price: p?.price, estimated: p ? p.priceEstimated : true, cost: p ? p.cost : Math.round(planCost / stops.length) };
   });
-  const sum = out.reduce((a, s) => a + s.cost, 0);
-  if (!sum) out.forEach((s) => (s.cost = Math.round(planCost / out.length)));
-  else if (planCost > 0 && Math.abs(sum - planCost) > 1) out.forEach((s) => (s.cost = Math.round((s.cost * planCost) / sum)));
-  return out;
+}
+
+/**
+ * Plans made before stops had a per-stop cost (older rounds) only store { place, time }.
+ * Fill in the missing costs by sharing the plan's total across its stops, so the split never gets NaN.
+ */
+export function withStopCosts(stops: any[], planCost: number): Stop[] {
+  const list = Array.isArray(stops) ? stops : [];
+  const known = list.reduce((a, s) => a + (Number.isFinite(Number(s.cost)) ? Number(s.cost) : 0), 0);
+  const missing = list.filter((s) => !Number.isFinite(Number(s.cost))).length;
+  const each = missing ? Math.max(0, (Number(planCost) || 0) - known) / missing : 0;
+  return list.map((s) => ({ ...s, cost: Number.isFinite(Number(s.cost)) ? Number(s.cost) : Math.round(each * 100) / 100 }));
 }
 
 /** Back-compat for the seed script: claim and fill a round in one go. */
@@ -149,9 +164,9 @@ export async function settleRound(roundId: number, force = false): Promise<strin
  * Amounts are in cents so they always add up to the total.
  */
 export async function computeSplit(roundId: number) {
-  const r = await q1<any>("select r.group_id,r.split_mode,r.payer_id,p.stops from plan_rounds r join plans p on p.id=r.winner_plan_id where r.id=$1", [roundId]);
+    const r = await q1<any>("select r.group_id,r.split_mode,r.payer_id,p.stops,p.est_cost_per_person::float plan_cost from plan_rounds r join plans p on p.id=r.winner_plan_id where r.id=$1", [roundId]);
   if (!r) return null;
-  const stops = r.stops as Stop[];
+    const stops = withStopCosts(r.stops, r.plan_cost);
   const members = await q<{ id: number; name: string }>("select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [r.group_id]);
   const skips = await q<{ user_id: number; stop_index: number }>("select user_id,stop_index from stop_skips where round_id=$1", [roundId]);
   const skipped = (uid: number) => skips.filter((s) => s.user_id === uid).map((s) => s.stop_index);

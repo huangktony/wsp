@@ -6,7 +6,7 @@ import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
 
 // Screen 10: Final plan and split. Itinerary -> split (even / by item) -> payment requests -> hangout confirmed.
-const money = (n: number) => `$${n.toFixed(2)}`;
+const money = (n: number | null | undefined) => `$${(Number(n) || 0).toFixed(2)}`;
 
 function downloadIcs(title: string, slot: string, from: string, stops: any[]) {
   const { start, end } = slotDate(slot, from);
@@ -67,7 +67,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
               <div className={`flex-1 pb-4 ${skipping ? "opacity-50" : ""}`}>
                 <p className="font-bold">{s.place}</p>
                 {s.address && <p className="text-sm text-muted">{s.address}</p>}
-                <p className="text-sm font-semibold text-sageink">~${s.cost} each</p>
+                <p className="text-sm font-semibold text-sageink">~${Number.isInteger(s.cost) ? s.cost : Number(s.cost).toFixed(2)} each</p>
                 {!sent && plan.stops.length > 1 && (
                   <label className="mt-1 flex items-center gap-2 text-sm text-muted">
                     <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked })} />
@@ -85,7 +85,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       </div>
 
       {/* Split */}
-      <section className="rounded-card bg-ink p-5 text-white">
+      <section className="rounded-card bg-panel p-5 text-white">
         <p className="text-sm opacity-80">Estimated total · {going} going</p>
         <p className="font-display text-4xl font-bold">{money(split.total)}</p>
         <p className="text-sm opacity-80">{payer?.user_id === data.me ? "You pay" : `${payer?.name ?? "The organizer"} pays`} up front, everyone pays back via Nessie.</p>
@@ -95,7 +95,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl bg-mintsoft p-1">
           {([["even", "Split evenly"], ["items", "By item"]] as const).map(([m, label]) => (
             <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => act({ action: "mode", mode: m })}
-              className={`h-11 rounded-xl text-sm font-semibold ${split.mode === m ? "bg-white shadow" : ""} ${!data.isPayer ? "cursor-default" : ""}`}>{label}</button>
+              className={`h-11 rounded-xl text-sm font-semibold ${split.mode === m ? "bg-surface shadow" : ""} ${!data.isPayer ? "cursor-default" : ""}`}>{label}</button>
           ))}
         </div>
       )}

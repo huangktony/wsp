@@ -4,10 +4,11 @@ import { BackButton } from "./BackButton";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
+import { PROFILES, PROFILE_LABELS, type Spender } from "@/lib/profiles";
 import { Logo, Wordmark } from "./Logo";
 import { Err } from "./Page";
 
-const field = "h-14 w-full rounded-2xl border-2 border-field bg-white px-4 text-base text-ink outline-none focus:border-ink";
+const field = "h-14 w-full rounded-2xl border-2 border-field bg-surface px-4 text-base text-ink outline-none focus:border-ink";
 
 function useAuthSubmit() {
   const r = useRouter();
@@ -35,7 +36,7 @@ export function LoginForm() {
         <h1 className="relative"><Wordmark className="text-[96px]" /></h1>
         <p className="relative mt-3.5 max-w-[170px] font-brand text-lg font-bold leading-snug text-sageink">afford. hang.</p>
       </div>
-      <form onSubmit={submit} className="relative z-10 -mt-8 flex flex-1 flex-col gap-3.5 rounded-t-[32px] bg-white px-6 pb-7 pt-7">
+      <form onSubmit={submit} className="relative z-10 -mt-8 flex flex-1 flex-col gap-3.5 rounded-t-[32px] bg-surface px-6 pb-7 pt-7">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="email" className="text-[13px] font-bold text-muted">Email</label>
           <input id="email" className={field} type="email" placeholder="you@school.edu" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
@@ -45,7 +46,7 @@ export function LoginForm() {
           <input id="pw" className={field} type="password" placeholder="Password" autoComplete="current-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required />
         </div>
         <Err msg={err} />
-        <button disabled={busy} className="mt-1.5 flex h-14 w-full items-center justify-center rounded-2xl bg-ink text-[17px] font-bold text-white active:opacity-80 disabled:opacity-50">Log in</button>
+        <button disabled={busy} className="mt-1.5 flex h-14 w-full items-center justify-center rounded-2xl bg-panel text-[17px] font-bold text-white active:opacity-80 disabled:opacity-50">Log in</button>
         <button type="button" disabled={busy} onClick={() => go(() => api("/api/auth/demo", "POST"))} className="flex h-14 w-full items-center justify-center rounded-2xl bg-mint text-[17px] font-bold text-ink active:opacity-80 disabled:opacity-50">Continue with demo account</button>
         <p className="mt-auto pt-2 text-center text-[15px] font-semibold text-muted">New here? <Link href="/signup" className="font-bold text-wine">Create an account</Link></p>
       </form>
@@ -56,13 +57,13 @@ export function LoginForm() {
 export function SignupForm() {
   const { err, busy, go } = useAuthSubmit();
   const [f, setF] = useState({ name: "", email: "", password: "" });
-  const [link, setLink] = useState(true);
+  const [choice, setChoice] = useState<Spender | "skip">("average");
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     go(async () => {
       await api("/api/auth/signup", "POST", f);
-      if (link) await api("/api/bank/link", "POST");
+      if (choice !== "skip") await api("/api/bank/link", "POST", { profile: choice });
     });
   };
   return (
@@ -75,19 +76,24 @@ export function SignupForm() {
         <input className={field} aria-label="Email" type="email" placeholder="Email" autoComplete="email" value={f.email} onChange={set("email")} required />
         <input className={field} aria-label="Password" type="password" placeholder="Password, 8+ characters" autoComplete="new-password" minLength={8} value={f.password} onChange={set("password")} required />
       </div>
-      <label className="flex cursor-pointer flex-col gap-3 rounded-[20px] bg-ink p-[18px] text-white">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-panel p-[18px] text-white">
         <div className="flex items-center justify-between">
           <span className="text-[17px] font-extrabold">Link a bank account</span>
           <span className="rounded-xl bg-peach px-2.5 py-1 text-xs font-extrabold text-ink">DEMO</span>
         </div>
-        <p className="text-sm leading-relaxed text-mint">WSP reads your spending to find a comfort level for group plans. Friends only see the lowest level in the group, never your purchases.</p>
-        <div className="flex items-center gap-2.5 rounded-[14px] bg-[#1E4259] px-3.5 py-3">
-          <input type="checkbox" checked={link} onChange={(e) => setLink(e.target.checked)} className="h-5 w-5 accent-[var(--peach)]" />
-          <span className="text-sm font-semibold">{link ? "Demo checking account selected" : "Skip for now, link it later in Profile"}</span>
+        <p className="text-sm leading-relaxed text-panelsoft">WSP reads your spending to find a comfort level for group plans. Friends only see the lowest level in the group, never your purchases.</p>
+        <div role="radiogroup" aria-label="Demo bank account" className="flex flex-wrap gap-2">
+          {[...PROFILES, "skip" as const].map((o) => (
+            <button key={o} type="button" role="radio" aria-checked={choice === o} disabled={busy} onClick={() => setChoice(o)}
+              className={`rounded-full px-3.5 py-2.5 text-sm font-bold disabled:opacity-50 ${choice === o ? "bg-peach text-ink" : "bg-[#1E4259] text-white"}`}>
+              {o === "skip" ? "Skip for now" : PROFILE_LABELS[o]}
+            </button>
+          ))}
         </div>
-      </label>
+        {choice === "skip" && <p className="text-sm text-panelsoft">You can link a demo account later from Budget.</p>}
+      </div>
       <Err msg={err} />
-      <div className="sticky bottom-0 -mx-6 mt-auto border-t border-line bg-white px-6 pb-[30px] pt-3.5">
+      <div className="sticky bottom-0 -mx-6 mt-auto border-t border-line bg-surface px-6 pb-[30px] pt-3.5">
         <button className="btn font-extrabold" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>
       </div>
     </form>

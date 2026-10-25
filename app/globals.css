@@ -16,8 +16,24 @@
   --wine: #8a1f47;
   --field: #6f98a2;
   --bg: #ffffff;
+  --surface: #ffffff;
+  --panel: var(--ink); /* dark cards with white text */
+  --panel-soft: #cbe6c7; /* accent text on --panel */
+  --logo-ink: var(--ink);
+  --matcha: #8fb78f;
+  --pistachio: #cbe6c7;
+  --azure: #b4cccf;
+  --indigo: #28536b;
+  --orchid: #f3a5bc;
+  --secondary: #35607a;
+  --maroon: #8a1f47;
+  --orchid-ink: #7a1a3f;
+  --matcha-ink: #1b3a1e;
+  --inactive: #5f8793;
+  --outline: #6f98a2;
   --pink-soft: color-mix(in srgb, var(--pink) 40%, white);
   --mint-soft: color-mix(in srgb, var(--mint) 55%, white);
+  color-scheme: light;
   /* TODO(decision): fonts. Candidates: Instrument Serif + DM Sans, Bricolage Grotesque + Instrument Sans, Fraunces + Figtree. */
   --font-display: "Fraunces", Georgia, serif;
   --font-body: "Figtree", system-ui, sans-serif;
@@ -34,15 +50,44 @@
   --deep-pink: #3b82f6;
 }
 
+:root[data-theme="dark"] {
+  --ink: #e3eef2;
+  --muted: #a3bcc8;
+  --border: #2b404b;
+  --mint: #26402c;
+  --sage: #4d8255;
+  --sage-ink: #e8f5e5;
+  --wine: #f29bbb;
+  --field: #4a6873;
+  --bg: #0f1b22;
+  --surface: #172832;
+  --panel: #1f4357;
+  --logo-ink: #28536b;
+  --matcha: #3e6644;
+  --pistachio: #22392a;
+  --azure: #2b444d;
+  --indigo: #b9d6e4;
+  --orchid: #6a2c44;
+  --secondary: #a3bcc8;
+  --maroon: #f29bbb;
+  --orchid-ink: #fbd0de;
+  --matcha-ink: #d5ecd1;
+  --inactive: #6f8e99;
+  --outline: #4a6873;
+  --pink-soft: #4a2633;
+  --mint-soft: #1f3326;
+  color-scheme: dark;
+}
+
 html, body { background: var(--bg); color: var(--ink); font-family: var(--font-body); }
 body { margin: 0; overflow-x: hidden; }
 h1, h2, h3 { font-family: var(--font-display); }
 
 @layer components {
   .btn { @apply flex h-14 w-full items-center justify-center rounded-2xl bg-sage text-base font-semibold text-sageink active:opacity-80 disabled:opacity-50; }
-  .btn-ghost { @apply flex h-14 w-full items-center justify-center rounded-2xl border border-line bg-white text-base font-semibold text-ink active:opacity-80; }
-  .card { @apply rounded-card border border-line bg-white p-4; }
-  .input { @apply h-14 w-full rounded-2xl border border-line bg-white px-4 text-base text-ink outline-none focus:border-sage; }
+  .btn-ghost { @apply flex h-14 w-full items-center justify-center rounded-2xl border border-line bg-surface text-base font-semibold text-ink active:opacity-80; }
+  .card { @apply rounded-card border border-line bg-surface p-4; }
+  .input { @apply h-14 w-full rounded-2xl border border-line bg-surface px-4 text-base text-ink outline-none focus:border-sage; }
   .chip { @apply inline-flex items-center rounded-full bg-mint px-3 py-1 text-xs font-semibold tracking-wide text-sageink; }
   .chip-pink { @apply inline-flex items-center rounded-full bg-pinksoft px-3 py-1 text-xs font-semibold tracking-wide text-ink; }
   .label { @apply mb-1 block text-sm font-semibold text-muted; }

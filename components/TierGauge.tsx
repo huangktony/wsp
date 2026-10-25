@@ -1,7 +1,7 @@
 const MAX = 50; // visible scale; the marker is clamped to the bar
 const NAMES = ["$", "$$", "$$$"];
 
-export function TierGauge({ tier, avg, cutoffs }: { tier: string; avg: number; cutoffs: number[] }) {
+export function TierGauge({ tier, avg, cutoffs, usedDefault }: { tier: string; avg: number; cutoffs: number[]; usedDefault?: boolean }) {
   const edges = [0, ...cutoffs, MAX];
   const pct = (v: number) => `${(Math.min(Math.max(v, 0), MAX) / MAX) * 100}%`;
   const idx = NAMES.indexOf(tier);
@@ -20,7 +20,9 @@ export function TierGauge({ tier, avg, cutoffs }: { tier: string; avg: number; c
         {NAMES.map((n, i) => <span key={n} style={{ width: `${((edges[i + 1] - edges[i]) / MAX) * 100}%` }}>{n}</span>)}
       </div>
       <figcaption className="mt-2 text-sm text-muted">
-        Avg ${avg} per outing. {need > 0 ? `$${need} more per outing moves you to ${NAMES[idx + 1]}.` : "Top level."}
+        {usedDefault
+          ? "No food or entertainment purchases yet, using a default level."
+          : `Avg $${avg} per outing. ${need > 0 ? `$${need} more per outing moves you to ${NAMES[idx + 1]}.` : "Top level."}`}
       </figcaption>
     </figure>
   );

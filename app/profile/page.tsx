@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Page } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
@@ -20,6 +21,7 @@ export default function Profile() {
         </div></section>
         <section><span className="label">Max distance: {mi} mi</span><input type="range" min={1} max={30} value={mi} onChange={(e) => setMi(+e.target.value)} className="w-full accent-[var(--sage)]" /></section>
         <button className="btn" onClick={() => api("/api/me", "PUT", { interests: it, max_distance_mi: mi }).then(() => setSaved(true))}>{saved ? "Saved ✓" : "Save"}</button>
+        <Link href="/settings" className="btn-ghost">Settings</Link>
         <button className="btn-ghost" onClick={() => api("/api/auth/logout", "POST").then(() => { r.push("/login"); r.refresh(); })}>Log out</button>
       </div>
     </Page>

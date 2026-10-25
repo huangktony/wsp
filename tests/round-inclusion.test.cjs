@@ -124,7 +124,7 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
   const pipeline = load('lib/pipeline.ts', {
     './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
     './db': { pool: { connect: async () => ({ query, release() {} }) } },
-    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './split': {},
+    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
   });
   await pipeline.startRound(5);
   assert.equal(inserts[0].length, 3);
@@ -167,7 +167,7 @@ test('winner tallies and confirmation-based closing apply the same inclusion pre
     './voting': voting,
     './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
     './db': db,
-    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './gemini': {}, './split': {},
+    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
   });
   assert.equal(await pipeline.settleRound(10), 'final');
   assert.ok(sqlSeen.some(sql => sql.startsWith("update plan_rounds set status='final'")));

@@ -31,7 +31,7 @@ DATABASE_URL=postgres://localhost:5432/wsp
 SESSION_SECRET=any-long-random-text
 ```
 
-Leave `USE_MOCKS=true`. That makes the app use fake data for the bank, places and AI, so it never breaks. To try the real services, add the keys (`NESSIE_API_KEY`, `SERPAPI_KEY`, `META_API_KEY`) and set `USE_MOCKS=false`.
+Leave `USE_MOCKS=true`. That makes the app use fake data for the bank, places and AI, so it never breaks. To try the real services, add the keys (`NESSIE_API_KEY`, `SERPAPI_KEY`, `GEMINI_API_KEY`) and set `USE_MOCKS=false`.
 
 ### Using Tiger Data instead of local Postgres
 
@@ -83,7 +83,7 @@ SSL is turned on automatically for any database that isn't on localhost. You don
 |---|---|
 | Capital One Nessie | `lib/nessie.ts` creates the demo bank account and reads purchases. `lib/tier.ts` turns them into a private budget level. |
 | SerpApi | `lib/serpapi.ts` searches Google Maps for places near the group, skipping places above the group's level. |
-| Meta AI | `lib/meta.ts` writes 3 plans using a fixed JSON format. It retries once, then falls back to mock plans. |
+| Gemini | `lib/gemini.ts` writes 3 plans using a fixed JSON format. It retries once, then falls back to mock plans. |
 | Tiger Data | The Postgres database. Put its connection string in `DATABASE_URL`. |
 | Vultr | Where the app is deployed. |
 | .TECH | The domain name for the deployed app. |
@@ -155,7 +155,7 @@ The migration has not been applied by the assistant. `db:migrate` runs only the 
 (but DDL can take locks). `db:seed` truncates all eight application tables and resets identities;
 `db:setup` runs that destructive seed after migrating. Never use either for this shared-database update.
 
-Live place search requires `SERPAPI_KEY`. `USE_MOCKS` now controls Nessie/Meta only;
+Live place search requires `SERPAPI_KEY`. `USE_MOCKS` now controls Nessie/Gemini only;
 it no longer replaces place searches. `USE_SAMPLE_PLACES` is optional and must be
 explicitly enabled to produce synthetic venues, labeled **Sample data** in the UI.
 Leave it unset or disabled for real places. Restart the dev server after env changes.
@@ -294,6 +294,6 @@ The bottom navigation switches between Hangout and Travel; there are no duplicat
 
 The public demo is a secondary dashboard link and remains independent of login, keys and database setup. It mirrors explicit ballot confirmation and majority removal, with fixed synthetic Austin/Denver fares. Automated coverage includes route caching, private budget qualification, concurrency, legacy snapshots, stale fares, confirmed votes, replacement failures, and saved finals. The revamp passes 293 automated tests and TypeScript. Browser checks cover the three-person demo through a persisted final result, plus voting and ballot confirmation against the existing one-person QA trip in the live database (no new provider search). No additional Travel migration or AI credentials are needed for this revamp; live flight searches still require the existing SerpApi key. Broader provider-driven discovery, flexible dates, nearby alternate airports, hotels, and booking are outside this version. The six-destination shortlist remains a heuristic, not a global cheapest-flight guarantee.
 
-### Meta plan generation
+### Gemini plan generation
 
-Hangout uses the [Meta Model API](https://dev.meta.ai/docs/protocols/chat-completions) at `https://api.meta.ai/v1/chat/completions`. Set server-only `META_API_KEY` and `USE_MOCKS=false`; `META_MODEL` defaults to `muse-spark-1.3` and can select another compatible model available to your Meta account. No SDK or database migration is required. Structured JSON is validated locally and all places must pass the existing budget checks. Missing credentials, invalid output, or provider failures use deterministic plans from the candidate places after at most two attempts. Travel flight pricing remains with SerpApi.
+Hangout uses the [Gemini API](https://ai.google.dev/api/generate-content) (`generateContent`, JSON mode with a response schema). Set server-only `GEMINI_API_KEY` and `USE_MOCKS=false`. `GEMINI_MODEL` defaults to `gemini-3.8-flash`; pick another with `GEMINI_MODEL` if your key can reach it. Check the [models page](https://ai.google.dev/gemini-api/docs/models): `gemini-2.0-flash` is shut down and the 2.5 models are limited to accounts that already used them. The key is sent in the `x-goog-api-key` header and is never logged. If the model is rejected, plan generation retries once, logs `gemini: plan generation failed (...)` with the status, and falls back to mock plans built from the real candidate places.

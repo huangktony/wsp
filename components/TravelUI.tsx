@@ -52,26 +52,29 @@ export function ScopePicker({ value, onChange, tall = false }: { value: TripScop
         className={`rounded-2xl border-2 px-2 text-sm font-bold ${tall ? 'h-[54px]' : 'min-h-11'} ${travelFocus} ${value === scope ? 'border-panel bg-panel text-white' : 'border-outline bg-surface text-indigo'}`}>{label}</button>)}
     </div></fieldset>;
 }
-export function DiscoverySummaryNote({ summary, demo = false }: { summary?: DiscoverySummary | null; demo?: boolean }) {
+export function DiscoverySummaryNote({ summary, demo = false, options }: { summary?: DiscoverySummary | null; demo?: boolean; options?: Option[] }) {
   if (!summary) return null;
-  const text = summary.returnedCount === 0 ? 'No destination fits everyone’s budget yet.' : `${summary.qualifiedCount} of ${summary.searchedCount} destinations fit everyone’s budget.`;
-  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-sm text-secondary">{demo ? 'Sample: ' : ''}{text}</p>;
+  const closest = summary.qualifiedCount === 0 && summary.returnedCount > 0;
+  const text = closest ? 'Nothing fits everyone’s budget. Closest options:' : summary.returnedCount === 0 ? 'No destination fits everyone’s budget yet.' : `${summary.qualifiedCount} of ${summary.searchedCount} destinations fit everyone’s budget.`;
+  const allOver = !!options?.length && options.every(o => o.fits === false);
+  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-sm text-secondary">{demo ? 'Sample: ' : ''}{text}{allOver && <span className="mt-1 block">Anyone can veto. Try a smaller scope or a higher limit.</span>}</p>;
 }
 export function TravelNotice() {
   return <p className="rounded-2xl border border-dashed border-outline p-4 text-xs leading-relaxed text-secondary">Fare estimates only. Budget checks use the Nessie sandbox. We never book or move money.</p>;
 }
 const money = (n: number) => new Intl.NumberFormat('en-US',{ style:'currency',currency:'USD',maximumFractionDigits:2 }).format(n);
 export function ComparisonCards({ options, myVotes, onVote, voting, busy = false, winnerId, demo = false, showRecommendation = true }: { options: Option[]; myVotes: { optionId:number; value:Vote }[]; onVote?: (id:number,value:Vote) => void; voting: boolean; busy?: boolean; winnerId?: number | null; demo?: boolean; showRecommendation?: boolean }) {
-  const best = showRecommendation ? cheapest(options) : null;
+  // Over-budget closest options get no 'lowest' badge: their one chip says why they are shown.
+  const best = showRecommendation ? cheapest(options.filter(o => o.fits !== false)) : null;
   return <div className="space-y-4">{options.map(o => <article key={o.id} className={`card overflow-hidden !p-0 ${winnerId === o.id ? 'border-2 border-sage' : ''}`}>
     <header className={`p-4 ${winnerId === o.id || best === o.id ? 'bg-pistachio' : 'bg-orchid/20'}`}>
-      <div className="mb-2 flex flex-wrap gap-2">{showRecommendation && o.recommendation && <span className="rounded-full bg-orchid px-3 py-1 text-xs font-bold text-orchidink">{o.recommendation.label}</span>}{winnerId === o.id && <span className="rounded-full bg-panel px-3 py-1 text-xs font-bold text-white">Your meeting place</span>}{best === o.id && o.recommendation?.kind !== 'lowest-cost' && <span className="rounded-full bg-matcha px-3 py-1 text-xs font-bold text-matchaink">Lowest total found</span>}</div>
+      <div className="mb-2 flex flex-wrap gap-2">{showRecommendation && o.recommendation && <span className="rounded-full bg-orchid px-3 py-1 text-xs font-bold text-orchidink">{o.recommendation.label}</span>}{o.fits === false && <span className="rounded-full bg-peach px-3 py-1 text-xs font-bold text-indigo">Over someone’s budget</span>}{winnerId === o.id && <span className="rounded-full bg-panel px-3 py-1 text-xs font-bold text-white">Your meeting place</span>}{best === o.id && o.recommendation?.kind !== 'lowest-cost' && <span className="rounded-full bg-matcha px-3 py-1 text-xs font-bold text-matchaink">Lowest total found</span>}</div>
       <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-[inherit] text-xl font-extrabold">{airportName(o.airport)} <span className="text-sm font-normal text-secondary">{o.airport}</span></h2><p className="text-xl font-extrabold">{o.total === null ? 'Unavailable' : money(o.total)}</p></div>
       <p className="mt-1 text-xs text-secondary">{formatTripDates(o.depart, o.return)} · {o.complete ? 'group total' : 'Some routes are missing'}</p>
     </header>
     <ul className="divide-y divide-azure px-4">{o.routes.map(r => <li key={r.userId} className="py-3">
       <div className="flex items-start justify-between gap-2"><div><p className="font-bold">{r.name} <span className="text-xs font-normal text-secondary">{r.origin} → {r.destination}</span></p><p className="mt-0.5 text-xs text-secondary">{r.local ? 'Local · no flight needed' : r.price === null ? 'No fare available' : `${r.airlines.join(', ') || 'Airline details unavailable'}${r.stops === null ? '' : ` · ${r.stops} stop${r.stops === 1 ? '' : 's'}`}${formatDuration(r.duration) ? ` · ${formatDuration(r.duration)}` : ''}`}</p></div><span className="shrink-0 font-bold">{r.price === null ? '—' : money(r.price)}</span></div>
-      {(() => {
+      {o.fits === false ? null : (() => {
         // Only a check run against a real sandbox account counts as passed. A simulated account is never shown as verified.
         const ok = demo ? r.check === true : r.check === true && r.checkSource !== 'simulated';
         return <p className="mt-2 text-xs" aria-label={ok ? `${demo ? 'Simulated' : 'Nessie sandbox'} private flight budget check passed` : 'Private flight budget check needs attention or is unavailable'}>{ok ? '✅' : '⚠️'} {demo ? 'Simulated check' : ok ? 'Within budget' : 'Budget check unavailable'}</p>;

@@ -102,23 +102,34 @@ export function recommendDestinations(qualified: Option[]): Option[] {
   return selected.slice(0,3);
 }
 export type DiscoveryTraveler = { id: number; name: string; airport: string; cap: number; funds: Financial };
-/** Reject before persistence: group-total cheapness can never conceal a member's over-cap route. */
+/** Reject before persistence: group-total cheapness can never conceal a member's over-cap route.
+ * Candidates with complete, fresh fares that failed only on a cap or the funds check are kept apart. They are used only when
+ * nothing fits anyone: then the three cheapest open voting as fits:false, with no per-person check, so no one can tell whose limit was exceeded.
+ */
 export function qualifyDestinations(candidates: Candidate[], travelers: DiscoveryTraveler[], quotes: Map<string,Quote>, now = Date.now()): { options: Option[]; summary: DiscoverySummary } {
-  const qualified: Option[] = [];
+  const qualified: Option[] = [], overBudget: Option[] = [];
   for (const candidate of candidates) {
     const routes: Route[] = [];
+    let usable = true, over = false;
     for (const member of travelers) {
       const quote = quotes.get(`${member.airport}/${candidate.id}`);
       if (!quote || quote.origin !== member.airport || quote.destination !== candidate.airport || quote.depart !== candidate.depart || quote.return !== candidate.return ||
           (quote.source!=='sample' && (!Number.isFinite(Date.parse(quote.quotedAt)) || now-Date.parse(quote.quotedAt)<0 || now-Date.parse(quote.quotedAt)>=FARE_TTL)) ||
           quote.local !== (quote.origin === quote.destination) || quote.price === null || !Number.isFinite(quote.price) || (quote.local ? quote.price !== 0 || quote.origin !== quote.destination : quote.price <= 0) ||
-          !Number.isFinite(member.cap) || member.cap < 0.01 || quote.price > member.cap) break;
+          !Number.isFinite(member.cap) || member.cap < 0.01) { usable = false; break; }
+      if (quote.price > member.cap) over = true;
       const check = budgetCheck(quote.price,member.cap,member.funds,now);
-      if (check === false) break; // Known, fresh Nessie availability is also binding. Unknown is caution, not a green.
+      if (check === false) over = true; // Known, fresh Nessie availability is also binding. Unknown is caution, not a green.
       routes.push({ ...quote,userId:member.id,name:member.name,check,checkSource:member.funds.source });
     }
-    if (!travelers.length || routes.length !== travelers.length || routes.every(r=>r.local)) continue;
-    qualified.push({ ...candidate,routes,complete:true,total:Math.round(routes.reduce((sum,r)=>sum+r.price!,0)*100)/100 });
+    if (!usable || !travelers.length || routes.length !== travelers.length || routes.every(r=>r.local)) continue;
+    const total = Math.round(routes.reduce((sum,r)=>sum+r.price!,0)*100)/100;
+    if (!over) qualified.push({ ...candidate,routes,complete:true,total });
+    else overBudget.push({ ...candidate,fits:false,routes:routes.map(r=>({ ...r,check:null,checkSource:'unknown' as const })),complete:true,total });
+  }
+  if (!qualified.length && overBudget.length) {
+    const closest = overBudget.sort((a,b)=>a.total!-b.total!||a.airport.localeCompare(b.airport)||a.id-b.id).slice(0,3);
+    return { options:closest,summary:{ searchedCount:candidates.length,qualifiedCount:0,returnedCount:closest.length } };
   }
   return { options:recommendDestinations(qualified),summary:{ searchedCount:candidates.length,qualifiedCount:qualified.length,returnedCount:Math.min(3,qualified.length) } };
 }
@@ -128,7 +139,7 @@ export function readComparison(value: unknown): { options: Option[]; summary: Di
   const stored = value as any;
   if (stored?.version !== 2 || !Array.isArray(stored.options)) return { options:[],summary:null,discovery:false };
   const s = stored.summary;
-  const valid = s && [s.searchedCount,s.qualifiedCount,s.returnedCount].every((n: unknown)=>typeof n==='number'&&Number.isInteger(n)&&n>=0) && s.searchedCount<=6 && s.qualifiedCount<=s.searchedCount && s.returnedCount<=3 && s.returnedCount<=s.qualifiedCount;
+  const valid = s && [s.searchedCount,s.qualifiedCount,s.returnedCount].every((n: unknown)=>typeof n==='number'&&Number.isInteger(n)&&n>=0) && s.searchedCount<=6 && s.qualifiedCount<=s.searchedCount && s.returnedCount<=3 && (s.returnedCount<=s.qualifiedCount || s.qualifiedCount===0);
   return { options:stored.options,summary:valid?{searchedCount:s.searchedCount,qualifiedCount:s.qualifiedCount,returnedCount:s.returnedCount}:null,discovery:true };
 }
 

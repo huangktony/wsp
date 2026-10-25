@@ -42,14 +42,16 @@ test('known fresh insufficient funds binds; unknown and simulated funds qualify 
     assert.equal(qualifyDestinations(list,people,fares).options[0].routes[0].check,null);
   }
   const people=members.map(m=>({...m,funds:{available:49,checkedAt:Date.now(),source:'nessie-sandbox' as const}}));
-  assert.equal(qualifyDestinations(list,people,fares).options.length,0);
+  const bound=qualifyDestinations(list,people,fares);
+  assert.deepEqual(bound.options.map(o=>o.fits),[false],'funds that cannot cover a fare make it a closest option, never a fit');
+  assert.equal(bound.summary.qualifiedCount,0);
 });
 test('missing routes, all-local and no-fit yield no padded options; fewer than three is honest',()=>{
   const fares=quotes(candidates.slice(0,2));
   assert.equal(qualifyDestinations(candidates,members,fares).options.length,2);
   fares.delete(`ELP/${candidates[0].id}`);
   assert.equal(qualifyDestinations(candidates,members,fares).options.length,1);
-  assert.equal(qualifyDestinations(candidates,members,quotes(candidates,members,101)).options.length,0);
+  assert.equal(qualifyDestinations(candidates,members,new Map()).options.length,0,'no fares at all: nothing to show');
   const local: Candidate[]=[{id:1,airport:'ELP',depart:dates.depart,return:dates.return}];
   assert.equal(qualifyDestinations(local,[members[0]],quotes(local,[members[0]])).options.length,0);
 });
@@ -189,4 +191,53 @@ test('home airports stay US only, destinations can be international, and flight 
   const p=flightParams('AUS',{id:1,airport:'CUN',depart:'2027-03-10',return:'2027-03-14'});
   assert.equal(p.arrival_id,'CUN');assert.equal(p.departure_id,'AUS');assert.equal(p.currency,'USD');
   assert.throws(()=>flightParams('AUS',{id:1,airport:'XXX',depart:'2027-03-10',return:'2027-03-14'}),/Unsupported/);
+});
+
+const over=(prices:(id:number)=>number)=>{const fares=quotes(candidates,members,50);for(const [key,q] of fares) if(!q.local) q.price=prices(Number(key.split('/')[1]));return fares;};
+const cheapestThree=(fares:Map<string,Quote>)=>candidates.map(c=>({id:c.id,total:members.reduce((n,m)=>n+fares.get(`${m.airport}/${c.id}`)!.price!,0)})).sort((a,b)=>a.total-b.total||a.id-b.id).slice(0,3).map(x=>x.id);
+test('when nothing fits, the three cheapest over-budget options open as fits:false with no per-person checks',()=>{
+  const fares=over(id=>101+id*10);
+  const result=qualifyDestinations(candidates,members,fares);
+  assert.equal(result.options.length,3);
+  assert.ok(result.options.every(o=>o.fits===false&&o.complete&&!o.recommendation));
+  const totals=result.options.map(o=>o.total!);assert.deepEqual(totals,[...totals].sort((a,b)=>a-b));
+  assert.deepEqual(result.options.map(o=>o.id),cheapestThree(fares),'the three cheapest, cheapest first');
+  assert.deepEqual(result.summary,{searchedCount:6,qualifiedCount:0,returnedCount:3});
+  for(const o of result.options) for(const r of o.routes){assert.equal(r.check,null);assert.equal(r.checkSource,'unknown');}
+  // With live sandbox funds a real check would be false (over the cap) with a known source. None of that is kept.
+  const live=members.map(m=>({...m,funds:{available:5000,checkedAt:Date.now(),source:'nessie-sandbox' as const}}));
+  for(const o of qualifyDestinations(candidates,live,fares).options) for(const r of o.routes){assert.equal(r.check,null);assert.equal(r.checkSource,'unknown');}
+});
+test('when anything fits, over-budget options are never included, even cheaper-looking ones',()=>{
+  const fares=over(id=>id===4?50:101+id);
+  const result=qualifyDestinations(candidates,members,fares);
+  assert.equal(result.options.length,1);assert.equal(result.options[0].id,4);
+  assert.ok(result.options.every(o=>o.fits!==false));assert.equal(result.summary.qualifiedCount,1);
+  const oneOver=quotes(candidates,members,50);oneOver.get(`ELP/${candidates[0].id}`)!.price=101;
+  assert.ok(!qualifyDestinations(candidates,members,oneOver).options.some(o=>o.id===candidates[0].id),'one member over their cap keeps the option out of the fits');
+});
+test('only complete, fresh fares can be a closest option; missing or expired ones are dropped',()=>{
+  const fares=over(id=>101+id*10);
+  fares.delete(`ELP/${candidates[0].id}`);
+  const result=qualifyDestinations(candidates,members,fares);
+  assert.ok(!result.options.some(o=>o.id===candidates[0].id));assert.equal(result.options.length,3);
+  const old=over(()=>150);for(const q of old.values()) if(!q.local){q.source='serpapi';q.quotedAt=new Date(Date.now()-FARE_TTL-1000).toISOString();}
+  assert.equal(qualifyDestinations(candidates,members,old).options.length,0,'expired fares are not offered');
+  const few=qualifyDestinations(candidates.slice(0,2),members,over(()=>150));assert.equal(few.options.length,2,'fewer than three is honest');
+});
+test('a fits:false option leaks no check, cap or who was over, in the public payload',()=>{
+  const result=qualifyDestinations(candidates,members.map((m,i)=>({...m,cap:[100,90,80][i]})),over(id=>101+id*10));
+  const pub=publicOptions(result.options,new Date().toISOString());
+  assert.ok(pub.every(o=>o.fits===false));
+  const raw=JSON.stringify(pub);
+  assert.ok(!/"cap"|"funds"|"available"/.test(raw));
+  assert.ok(!/"check":(true|false)/.test(raw));assert.ok(!/"checkSource":"(nessie-sandbox|simulated)"/.test(raw));
+  for(const o of pub) for(const r of o.routes){assert.equal(r.check,null);assert.equal(r.checkSource,'unknown');}
+  const tampered=result.options.map(o=>({...o,routes:o.routes.map(r=>({...r,check:false,checkSource:'nessie-sandbox' as const}))}));
+  for(const o of publicOptions(tampered,new Date().toISOString())) for(const r of o.routes){assert.equal(r.check,null,'even a stored check is hidden on fits:false');assert.equal(r.checkSource,'unknown');}
+  assert.ok(!/"fits"/.test(JSON.stringify(publicOptions(qualifyDestinations(candidates,members,quotes()).options,new Date().toISOString()))),'fitting options carry no fits flag');
+});
+test('a closest-options summary reads back, while an impossible one is still rejected',()=>{
+  const ok=readComparison({version:2,options:[],summary:{searchedCount:6,qualifiedCount:0,returnedCount:3}});assert.equal(ok.summary?.returnedCount,3);
+  assert.equal(readComparison({version:2,options:[],summary:{searchedCount:6,qualifiedCount:2,returnedCount:3}}).summary,null);
 });

@@ -71,3 +71,20 @@ test('dates in another year show the year, in the current year they do not',()=>
   assert.ok(!text(cards(option())).includes(String(YEAR)));
   assert.match(text(cards(option({depart:`${YEAR+1}-03-10`,return:`${YEAR+1}-03-14`}))),new RegExp(`Mar 10 – 14, ${YEAR+1}`));
 });
+test('closest options: the summary line says so, and the veto hint appears only when every option is over budget',()=>{
+  const closest={searchedCount:6,qualifiedCount:0,returnedCount:3};
+  const over=[option({fits:false}),option({id:2,fits:false})];
+  assert.equal(text(ui.DiscoverySummaryNote({summary:closest})),'Nothing fits everyone’s budget. Closest options:','no hint without the options');
+  assert.equal(text(ui.DiscoverySummaryNote({summary:closest,options:over})),'Nothing fits everyone’s budget. Closest options:Anyone can veto. Try a smaller scope or a higher limit.');
+  assert.ok(!/Anyone can veto/.test(text(ui.DiscoverySummaryNote({summary:{searchedCount:6,qualifiedCount:2,returnedCount:2},options:[option(),option({id:2})]}))));
+  assert.ok(!/Anyone can veto/.test(text(ui.DiscoverySummaryNote({summary:{searchedCount:6,qualifiedCount:2,returnedCount:2},options:[option(),option({id:2,fits:false})]}))),'a mix never happens, but a fitting option cancels the hint');
+  assert.equal(text(ui.DiscoverySummaryNote({summary:closest,demo:true})).startsWith('Sample: Nothing fits'),true);
+});
+test('a fits:false card has one chip, "Over someone’s budget", and no per-person check lines or cap',()=>{
+  const t=text(cards(option({fits:false,routes:[route({check:null,checkSource:'unknown'}),route({userId:2,name:'Tony',check:null,checkSource:'unknown'})]})));
+  assert.equal((t.match(/Over someone’s budget/g)||[]).length,1);
+  assert.ok(!/Within budget|Budget check unavailable|✅|⚠️|Simulated check/.test(t),t);
+  assert.ok(!/cap|limit/i.test(t));
+  assert.ok(!/Lowest total found|Best value/.test(t),'one chip only, no lowest-total badge');
+  const fitting=text(cards(option()));assert.ok(!/Over someone’s budget/.test(fitting));assert.match(fitting,/Within budget/);
+});

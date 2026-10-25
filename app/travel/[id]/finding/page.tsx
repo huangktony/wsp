@@ -46,7 +46,7 @@ export default function FindingFlights({params}:{params:Promise<{id:string}>}) {
       {comparison?.status==='vetoed'&&<p role="status" className="text-sm text-secondary">No destination won. Try new dates.</p>}
       {comparison?.expired&&<p role="status" className="text-sm text-secondary">Fares expired. Votes are saved.</p>}
       {comparison?.error&&<p role="alert" className="text-sm text-maroon">{comparison.error}</p>}
-      {comparison?.status!=='generating'&&<DiscoverySummaryNote summary={comparison?.summary}/>}
+      {comparison?.status!=='generating'&&<DiscoverySummaryNote summary={comparison?.summary} options={comparison?.options}/>}
       {comparison?.status==='failed'&&comparison.options.length>0&&<ComparisonCards options={comparison.options} myVotes={[]} voting={false}/>}
       {comparison?.status==='voting'&&<Link href={`/travel/${id}/plans`} className={`${travelButton} w-full`}>Continue to destination voting</Link>}
       {saved&&<Link href={`/travel/${id}/final`} className={`${travelQuiet} w-full`}>See the picked meeting place</Link>}

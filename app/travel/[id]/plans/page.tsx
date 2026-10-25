@@ -62,7 +62,7 @@ export default function TravelPlans({ params }: { params: Promise<{ id: string }
         <p role="status" className="text-sm">{comparison?.status === 'final' ? 'Voting closed. Meeting place picked.' : comparison?.status === 'vetoed' ? 'No destination won. Try new options.' : comparison?.status === 'stale' ? 'Trip changed. A new search is needed.' : comparison?.status === 'generating' ? 'Flight search in progress.' : comparison?.error ?? 'No flight search yet.'}</p>
         <Link href={comparison?.status === 'final' ? `/travel/${id}/final` : `/travel/${id}/finding`} className={travelQuiet}>{comparison?.status === 'final' ? 'See meeting place' : 'See flight search'}</Link>
       </section>}
-      <DiscoverySummaryNote summary={comparison?.summary} />
+      <DiscoverySummaryNote summary={comparison?.summary} options={comparison?.options} />
       {removed.length > 0 && <p role="status" className="text-sm text-secondary">{removed.length} removed by majority veto.</p>}
       {!!options.length && <ComparisonCards options={options} myVotes={myVotes} voting={open && ownReady && !comparison.myConfirmed} busy={busy} onVote={vote} />}
       {open && ownReady && <>

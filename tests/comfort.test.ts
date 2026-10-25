@@ -108,8 +108,14 @@ test("caption: with no suggestion it asks to link or pick, with or without a pic
   }
 });
 
-test("caption: cents in the average are shown, and a missing average does not print 'null'", () => {
-  assert.ok(comfortCaption({ suggested: "$", picked: null, avg: 8.13 }).text.includes("$8.13 per outing"));
+test("caption: the average is rounded to whole dollars, and a missing average does not print 'null'", () => {
+  const cap = (avg: number) => comfortCaption({ suggested: "$", picked: null, avg }).text;
+  assert.ok(cap(21.81).includes("about $22 per outing"));
+  assert.ok(cap(8.13).includes("about $8 per outing"));
+  assert.ok(cap(18).includes("about $18 per outing"));
+  assert.ok(cap(18.5).includes("about $19 per outing"));
+  assert.ok(cap(18.49).includes("about $18 per outing"));
+  assert.ok(!/\d\.\d/.test(cap(21.81)), "no cents in the sentence");
   const c = comfortCaption({ suggested: "$$", picked: null, avg: null });
   assert.ok(!c.text.includes("null") && !c.text.includes("undefined"));
   assert.equal(c.bold, undefined);

@@ -32,7 +32,8 @@ export function comfortCaption(p: { suggested: Tier | null; picked: Tier | null;
   const { suggested, picked, avg } = p;
   if (!suggested) return { kind: "none", text: "Link a demo account for a suggestion, or pick a level.", showReset: false };
   if (!picked || picked === suggested) {
-    const bold = avg == null ? undefined : `$${Number.isInteger(avg) ? avg : avg.toFixed(2)} per outing`;
+    // "about" plus cents reads oddly, so the caption rounds to whole dollars (Budget keeps the cents).
+    const bold = avg == null ? undefined : `$${Math.round(avg)} per outing`;
     const text = bold
       ? `You usually spend about ${bold}, so WSP looks for places at ${suggested} or below.`
       : `WSP looks for places at ${suggested} or below.`;

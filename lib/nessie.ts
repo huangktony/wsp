@@ -1,6 +1,7 @@
 // Nessie client. Behavior verified against the live sandbox, see scripts/nessie-probe.ts.
 import { mockPurchases } from "./mocks/data";
 import type { MerchantInfo, NessiePurchase } from "./analyze";
+import { planPurchases, startingBalance, type Spender } from "./profiles";
 
 const BASE = "https://api.nessieisreal.com";
 const useMock = () => process.env.USE_MOCKS === "true" || !process.env.NESSIE_API_KEY;
@@ -68,50 +69,17 @@ export async function ensureMerchants(): Promise<Map<string, { id: string; categ
   return out;
 }
 
-export type Spender = "frugal" | "average" | "big";
-export const spenderFor = (userId: number): Spender => (["frugal", "average", "big"] as const)[userId % 3];
-// Whole-dollar fun-purchase ranges chosen to sit fully inside one tier for TIER_CUTOFFS [12, 30].
-const FUN_RANGE: Record<Spender, [number, number]> = { frugal: [5, 11], average: [14, 28], big: [32, 60] };
-
-function rng(seed: number) {
-  let a = seed + 0x6d2b79f5;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Posts ~25 purchases over the last 29 days (plus 2 cancelled). Does nothing if the account already has purchases. */
-export async function seedAccount(accountId: string, userId: number): Promise<number> {
+/** Posts the planned purchases (see planPurchases). Does nothing if the account already has purchases. */
+export async function seedAccount(accountId: string, userId: number, profile: Spender): Promise<number> {
   const existing: any[] = await nj(`/accounts/${accountId}/purchases`);
   if (existing.length) return 0;
   const merchants = await ensureMerchants();
-  const all = [...merchants.entries()];
-  const fun = all.filter(([, m]) => m.category === "food" || m.category === "entertainment");
-  const other = all.filter(([, m]) => m.category !== "food" && m.category !== "entertainment");
-  const r = rng(userId * 7919 + 13);
-  const int = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
-  const [lo, hi] = FUN_RANGE[spenderFor(userId)];
-  const day = () => new Date(Date.now() - int(0, 28) * 864e5).toISOString().slice(0, 10);
-
-  const rows: { merchant_id: string; amount: number; status: string; description: string; purchase_date: string }[] = [];
-  for (let i = 0; i < 16; i++) {
-    const [name, m] = fun[int(0, fun.length - 1)];
-    rows.push({ merchant_id: m.id, amount: int(lo, hi), status: "completed", description: name, purchase_date: day() });
-  }
-  const OTHER_RANGE: Record<string, [number, number]> = { groceries: [25, 70], transport: [8, 25], shopping: [20, 80] };
-  for (let i = 0; i < 7; i++) {
-    const [name, m] = other[int(0, other.length - 1)];
-    const [a, b] = OTHER_RANGE[m.category];
-    rows.push({ merchant_id: m.id, amount: int(a, b), status: "completed", description: name, purchase_date: day() });
-  }
-  // Cancelled purchases with big amounts, so a missing status filter would visibly change the tier.
-  for (let i = 0; i < 2; i++) {
-    const [name, m] = fun[int(0, fun.length - 1)];
-    rows.push({ merchant_id: m.id, amount: 95, status: "cancelled", description: name, purchase_date: day() });
-  }
+  const rows = planPurchases(userId, profile).map((p) => {
+    const m = merchants.get(p.merchant);
+    if (!m) throw new Error(`seed merchant missing: ${p.merchant}`);
+    const purchase_date = new Date(Date.now() - p.daysAgo * 864e5).toISOString().slice(0, 10);
+    return { merchant_id: m.id, amount: p.amount, status: p.status, description: p.merchant, purchase_date };
+  });
   for (let i = 0; i < rows.length; i += 5) {
     await Promise.all(rows.slice(i, i + 5).map((row) => nj(`/accounts/${accountId}/purchases`, { method: "POST", body: JSON.stringify({ medium: "balance", ...row }) })));
   }
@@ -119,7 +87,7 @@ export async function seedAccount(accountId: string, userId: number): Promise<nu
 }
 
 /** Creates a Nessie customer + checking account and seeds its purchase history, or returns a mock id pair. */
-export async function linkAccount(name: string, userId: number): Promise<{ customerId: string; accountId: string }> {
+export async function linkAccount(name: string, userId: number, profile: Spender): Promise<{ customerId: string; accountId: string }> {
   if (live()) {
     const [first, ...rest] = name.split(" ");
     const c = await nj("/customers", {
@@ -129,11 +97,11 @@ export async function linkAccount(name: string, userId: number): Promise<{ custo
     const customerId = c.objectCreated?._id;
     const a = await nj(`/customers/${customerId}/accounts`, {
       method: "POST",
-      body: JSON.stringify({ type: "Checking", nickname: "WSP demo", rewards: 0, balance: 2000 }),
+      body: JSON.stringify({ type: "Checking", nickname: "WSP demo", rewards: 0, balance: startingBalance(profile, userId) }),
     });
     const accountId = a.objectCreated?._id;
     if (!customerId || !accountId) throw new Error("nessie did not return customer and account ids");
-    await seedAccount(accountId, userId);
+    await seedAccount(accountId, userId, profile);
     return { customerId, accountId };
   }
   const id = `mock-${Math.random().toString(36).slice(2, 10)}`;
@@ -143,7 +111,10 @@ export async function linkAccount(name: string, userId: number): Promise<{ custo
 /** Merchants never change, so cache them for the life of the server process, keyed by merchant id. */
 const merchantCache = new Map<string, MerchantInfo>();
 
-export type SpendingData = { purchases: NessiePurchase[]; merchants: Map<string, MerchantInfo> };
+/** `balance` is the account's STARTING balance: Nessie does not deduct purchases from it. */
+export type SpendingData = { purchases: NessiePurchase[]; merchants: Map<string, MerchantInfo>; balance: number | null };
+
+const MOCK_BALANCE = 2000;
 
 /**
  * Everything one request needs, fetched once: the account check, all purchases, and the merchants they reference.
@@ -154,7 +125,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
     // Live: zero purchases means zero, and errors surface to the caller.
     // Nessie answers 200 [] for purchases of an unknown account or wrong key, but 404 for the account itself,
     // so check the account first. Otherwise a wrong account would look like someone who spent nothing.
-    await nj(`/accounts/${accountId}`);
+    const account = await nj(`/accounts/${accountId}`);
     const rows: any[] = await nj(`/accounts/${accountId}/purchases`);
     const purchases: NessiePurchase[] = rows.map((r) => ({ merchant_id: r.merchant_id, purchase_date: r.purchase_date, amount: r.amount, status: r.status }));
     const merchants = new Map<string, MerchantInfo>();
@@ -175,7 +146,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
         console.error(maskKey(`merchant lookup failed: ${e?.message ?? e}`));
       }
     }));
-    return { purchases, merchants };
+    return { purchases, merchants, balance: typeof account.balance === "number" ? account.balance : null };
   }
   // Mock mode and mock- accounts: same shape, built from the mock generator (90 days covers every range the screen offers).
   const merchants = new Map<string, MerchantInfo>();
@@ -184,7 +155,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
     merchants.set(id, { name: p.merchant, category: p.category });
     return { merchant_id: id, purchase_date: p.date, amount: p.amount, status: "completed" };
   });
-  return { purchases, merchants };
+  return { purchases, merchants, balance: MOCK_BALANCE };
 }
 
 /**

@@ -10,7 +10,7 @@ const STEPS = [
   ["Matching everyone's free time", "Picking the slot most of you share"],
   ["Checking the group budget", "Using the lowest level in the group"],
   ["Searching nearby places", "Skipping anything above budget"],
-  ["Writing 3 plans", "With a reason for each"],
+  ["Writing the plans", "With a reason for each"],
 ];
 const MIN_MS = 3800; // so the checklist is readable even when mocks answer instantly
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
@@ -57,7 +57,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
     <Page back={`/groups/${id}`}>
       <div className="text-center">
         <div className={err ? "inline-block" : "inline-block animate-bounce"}><Logo size={80} /></div>
-        <h1 className="mt-4 text-3xl font-bold">{regen ? `All ${prev?.titles?.length ?? 3} plans were vetoed` : "Finding plans…"}</h1>
+        <h1 className="mt-4 text-3xl font-bold">{regen ? (prev?.titles?.length === 1 ? "The plan was vetoed" : `All ${prev?.titles?.length ?? 3} plans were vetoed`) : "Finding plans…"}</h1>
         {regen && <p className="mt-2 text-muted">No problem. We're making new ones and leaving out those places.</p>}
       </div>
 

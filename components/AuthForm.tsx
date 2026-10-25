@@ -4,6 +4,7 @@ import { BackButton } from "./BackButton";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
+import { PROFILES, PROFILE_LABELS, type Spender } from "@/lib/profiles";
 import { Logo, Wordmark } from "./Logo";
 import { Err } from "./Page";
 
@@ -56,13 +57,13 @@ export function LoginForm() {
 export function SignupForm() {
   const { err, busy, go } = useAuthSubmit();
   const [f, setF] = useState({ name: "", email: "", password: "" });
-  const [link, setLink] = useState(true);
+  const [choice, setChoice] = useState<Spender | "skip">("average");
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     go(async () => {
       await api("/api/auth/signup", "POST", f);
-      if (link) await api("/api/bank/link", "POST");
+      if (choice !== "skip") await api("/api/bank/link", "POST", { profile: choice });
     });
   };
   return (
@@ -75,17 +76,22 @@ export function SignupForm() {
         <input className={field} aria-label="Email" type="email" placeholder="Email" autoComplete="email" value={f.email} onChange={set("email")} required />
         <input className={field} aria-label="Password" type="password" placeholder="Password, 8+ characters" autoComplete="new-password" minLength={8} value={f.password} onChange={set("password")} required />
       </div>
-      <label className="flex cursor-pointer flex-col gap-3 rounded-[20px] bg-ink p-[18px] text-white">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-ink p-[18px] text-white">
         <div className="flex items-center justify-between">
           <span className="text-[17px] font-extrabold">Link a bank account</span>
           <span className="rounded-xl bg-peach px-2.5 py-1 text-xs font-extrabold text-ink">DEMO</span>
         </div>
         <p className="text-sm leading-relaxed text-mint">WSP reads your spending to find a comfort level for group plans. Friends only see the lowest level in the group, never your purchases.</p>
-        <div className="flex items-center gap-2.5 rounded-[14px] bg-[#1E4259] px-3.5 py-3">
-          <input type="checkbox" checked={link} onChange={(e) => setLink(e.target.checked)} className="h-5 w-5 accent-[var(--peach)]" />
-          <span className="text-sm font-semibold">{link ? "Demo checking account selected" : "Skip for now, link it later in Profile"}</span>
+        <div role="radiogroup" aria-label="Demo bank account" className="flex flex-wrap gap-2">
+          {[...PROFILES, "skip" as const].map((o) => (
+            <button key={o} type="button" role="radio" aria-checked={choice === o} disabled={busy} onClick={() => setChoice(o)}
+              className={`rounded-full px-3.5 py-2.5 text-sm font-bold disabled:opacity-50 ${choice === o ? "bg-peach text-ink" : "bg-[#1E4259] text-white"}`}>
+              {o === "skip" ? "Skip for now" : PROFILE_LABELS[o]}
+            </button>
+          ))}
         </div>
-      </label>
+        {choice === "skip" && <p className="text-sm text-mint">You can link a demo account later from Budget.</p>}
+      </div>
       <Err msg={err} />
       <div className="sticky bottom-0 -mx-6 mt-auto border-t border-line bg-white px-6 pb-[30px] pt-3.5">
         <button className="btn font-extrabold" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>

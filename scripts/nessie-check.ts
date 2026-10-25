@@ -18,7 +18,7 @@ async function main() {
   }
   const now = new Date();
   const data = await loadSpending(accountId);
-  console.log(`account ${accountId}  (${data.purchases.length} purchases, ${data.merchants.size} merchants, as of ${now.toISOString().slice(0, 10)})\n`);
+  console.log(`account ${accountId}  (${data.purchases.length} purchases, ${data.merchants.size} merchants, starting balance ${data.balance}, as of ${now.toISOString().slice(0, 10)})\n`);
 
   const rows = data.purchases
     .map((p) => ({ date: p.purchase_date, merchant: data.merchants.get(p.merchant_id)?.name ?? "Unknown merchant", category: data.merchants.get(p.merchant_id)?.category ?? "?", status: p.status, amount: p.amount }))

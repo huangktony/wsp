@@ -4,11 +4,11 @@ import { Page } from "@/components/Page";
 import { CategoryBars } from "@/components/CategoryBars";
 import { TierGauge } from "@/components/TierGauge";
 import { TierBadge } from "@/components/TierBadge";
-import { api, useApi } from "@/lib/client";
+import { LinkBank } from "@/components/LinkBank";
+import { useApi } from "@/lib/client";
 
 export default function Spending() {
   const [days, setDays] = useState(30);
-  const [linking, setLinking] = useState(false), [linkErr, setLinkErr] = useState("");
   const { data, error, reload } = useApi<any>(`/api/me/spending?days=${days}`);
   if (error) {
     return (
@@ -23,8 +23,7 @@ export default function Spending() {
     return (
       <Page title="Spending and budget" tabs>
         <p className="mb-4 text-muted">Link a demo account to see your spending and budget level.</p>
-        {linkErr && <p className="mb-3 font-semibold text-deep">{linkErr}</p>}
-        <button className="btn" disabled={linking} onClick={() => { setLinking(true); setLinkErr(""); api("/api/bank/link", "POST").then(reload).catch((e) => setLinkErr(e.message)).finally(() => setLinking(false)); }}>{linking ? "Linking…" : "Link demo bank account"}</button>
+        <LinkBank onLinked={() => reload()} />
       </Page>
     );
   }
@@ -38,6 +37,7 @@ export default function Spending() {
         <p className="text-sm font-semibold text-muted">Spent in the last {n} days</p>
         <p className="font-display text-4xl font-bold">${data.spent.toLocaleString()}</p>
         <p className="mt-1 text-sm text-muted">{data.count} {data.count === 1 ? "purchase" : "purchases"}</p>
+        {data.startingBalance != null && <p className="mt-1 text-sm text-muted">Starting balance ${data.startingBalance.toLocaleString()}</p>}
       </div>
       <div className="card mb-4">
         <div className="mb-3 flex items-center justify-between"><h2 className="font-bold">Your budget level</h2><TierBadge tier={data.tier} /></div>

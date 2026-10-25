@@ -9,7 +9,7 @@ const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const avatarColors = ["bg-matcha text-matchaink", "bg-orchid text-orchidink", "bg-peach text-indigo", "border border-azure bg-pistachio text-indigo"];
 const primary = `flex min-h-[54px] w-full items-center justify-center rounded-[14px] bg-matcha px-4 py-3 text-[17px] font-bold text-matchaink ${focus}`;
 
-type Member = { id: number; name: string; setup_done: boolean };
+type Member = { id: number; name: string; setup_done: boolean; has_voted: boolean };
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -35,9 +35,11 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
     }
   };
   const members: Member[] = g?.members ?? [];
-  const pending = members.filter((member) => !member.setup_done);
-  const ready = members.length - pending.length;
-  const progress = members.length ? Math.round(ready / members.length * 100) : 0;
+  const open = g?.roundOpen === true, final = g?.round?.status === "final";
+  const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
+  const total = open ? g.memberCount : members.length;
+  const ready = open ? g.voted : members.length - pending.length;
+  const progress = total ? Math.round(ready / total * 100) : 0;
   const memberName = (member: Member) => member.id === g.me ? "You" : member.name;
   let helper = "Everyone is ready.";
   if (pending.length === 1) {
@@ -49,7 +51,16 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   } else if (!members.length) {
     helper = "No members yet.";
   }
-  const open = g?.round?.status === "voting", final = g?.round?.status === "final";
+  if (open) {
+    const missing = pending.length === 1
+      ? `${memberName(pending[0])} ${pending[0].id === g.me ? "have" : "has"}`
+      : pending.length === 2
+        ? `${memberName(pending[0])} and ${pending[1].id === g.me ? "you" : pending[1].name} have`
+        : `${pending.length} members have`;
+    helper = pending.length
+      ? `${missing} not voted yet. Voting closes at the deadline or once everyone has voted on every plan.`
+      : "Everyone has voted.";
+  }
   return (
     <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-white px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
@@ -62,9 +73,9 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       {!g ? <p role={error ? "alert" : "status"} className={`text-sm ${error ? "text-maroon" : "text-secondary"}`}>{error || "Loading…"}</p> : <>
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[15px] font-bold">{ready} of {members.length} ready</span>
+            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {open ? "voting" : "setup"}</span></span>
           </div>
-          <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${members.length} members ready`} className="h-3 overflow-hidden rounded-full bg-white">
+          <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-white">
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
           </div>
         </section>
@@ -85,7 +96,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
               <li key={member.id} className="flex items-center gap-3 border-b border-azure py-3 last:border-b-0">
                 <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{member.name.trim().charAt(0).toUpperCase()}</span>
                 <span className="min-w-0 flex-1 break-words text-base font-bold">{memberName(member)}</span>
-                <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${member.setup_done ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{member.setup_done ? "Ready" : "Setting up"}</span>
+                <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${(open ? member.has_voted : member.setup_done) ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{open ? (member.has_voted ? "Voted" : "Not voted yet") : (member.setup_done ? "Ready" : "Setting up")}</span>
               </li>
             ))}
           </ul>

@@ -27,7 +27,6 @@ export default {
         pinksoft: "var(--pink-soft)",
         mintsoft: "var(--mint-soft)",
         deep: "var(--deep-pink)",
-        peach: "var(--peach)",
         wine: "var(--wine)",
         field: "var(--field)",
       },

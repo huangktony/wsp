@@ -19,7 +19,7 @@ type Member = { id: number; name: string; setup_done: boolean; has_voted: boolea
 
 export default function GroupHome({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: g, error } = useApi<any>(`/api/groups/${id}`);
+  const { data: g, error } = useApi<any>(`/api/groups/${id}`, 5000);
   const router = useRouter();
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);

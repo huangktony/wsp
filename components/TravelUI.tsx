@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google';
 import { Skeleton, SkeletonBlock } from './Skeleton';
 const inter = Inter({ subsets: ['latin'], weight: ['400', '600', '700', '800'] });
 import { type DiscoveryDates, type DiscoverySummary } from '@/lib/travel/discovery';
-import { AIRPORTS, airportName, cheapest, recheckLink, type Option, type Vote } from '@/lib/travel/core';
+import { US_AIRPORTS, SCOPES, airportName, type TripScope, cheapest, recheckLink, type Option, type Vote } from '@/lib/travel/core';
 import { formatDuration, formatFareTime, formatTripDates } from '@/lib/travel/format';
 export const travelFocus = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo';
 export const travelButton = `inline-flex min-h-12 items-center justify-center rounded-full bg-panel px-5 py-3 text-base font-bold text-white disabled:opacity-50 ${travelFocus}`;
@@ -33,7 +33,7 @@ export function TravelArt() {
 }
 export function AirportSelect({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   return <label className="block min-w-0 text-sm font-semibold">{label}<select required value={value} onChange={e => onChange(e.target.value)} className={`${travelInput} mt-1`}>
-    <option value="">Choose a US airport</option>{AIRPORTS.map(([code,city]) => <option key={code} value={code}>{code} · {city}</option>)}
+    <option value="">Choose a US airport</option>{US_AIRPORTS.map(([code,city]) => <option key={code} value={code}>{code} · {city}</option>)}
   </select></label>;
 }
 export function DatesEditor({ value, onChange, tall = false }: { value: DiscoveryDates; onChange: (v: DiscoveryDates) => void; tall?: boolean }) {
@@ -43,6 +43,14 @@ export function DatesEditor({ value, onChange, tall = false }: { value: Discover
     <div className="grid min-w-0 grid-cols-2 gap-2"><label className="min-w-0 text-xs font-semibold">Depart<input required type="date" aria-label="Shared departure date" value={value.depart} onChange={e=>onChange({...value,depart:e.target.value})} className={field}/></label>
     <label className="min-w-0 text-xs font-semibold">Return<input required type="date" aria-label="Shared return date" value={value.return} onChange={e=>onChange({...value,return:e.target.value})} className={field}/></label></div>
   </fieldset>;
+}
+/** Three chips: where the search looks for meeting places. */
+export function ScopePicker({ value, onChange, tall = false }: { value: TripScope; onChange: (v: TripScope) => void; tall?: boolean }) {
+  return <fieldset className="min-w-0"><legend className="mb-2 font-bold">Where should we look?</legend>
+    <div role="radiogroup" aria-label="Trip scope" className="grid grid-cols-3 gap-2">
+      {SCOPES.map(({ value: scope, label }) => <button key={scope} type="button" role="radio" aria-checked={value === scope} onClick={() => onChange(scope)}
+        className={`rounded-2xl border-2 px-2 text-sm font-bold ${tall ? 'h-[54px]' : 'min-h-11'} ${travelFocus} ${value === scope ? 'border-panel bg-panel text-white' : 'border-outline bg-surface text-indigo'}`}>{label}</button>)}
+    </div></fieldset>;
 }
 export function DiscoverySummaryNote({ summary, demo = false }: { summary?: DiscoverySummary | null; demo?: boolean }) {
   if (!summary) return null;

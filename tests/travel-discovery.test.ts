@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultDates, readDates, validateDates, discoveryShortlist, qualifyDestinations, readComparison, discoveryFailure, recommendDestinations, type DiscoveryTraveler } from '../lib/travel/discovery';
-import { fetchFlight } from '../lib/travel/flights';
-import { AIRPORTS, FARE_TTL, publicOptions, cheapest, type Option, type Candidate, type Quote } from '../lib/travel/core';
+import { fetchFlight, flightParams } from '../lib/travel/flights';
+import { AIRPORTS, US_AIRPORTS, INTERNATIONAL_AIRPORTS, validAirport, validHomeAirport, validateSetup, TravelInputError, FARE_TTL, publicOptions, cheapest, type Option, type Candidate, type Quote } from '../lib/travel/core';
 const dates=defaultDates();
 const candidates=discoveryShortlist(['ELP','IAH','ORD'],dates);
 const members: DiscoveryTraveler[]=['ELP','IAH','ORD'].map((airport,i)=>({id:i+1,name:`Member ${i}`,airport,cap:100,funds:{available:null,checkedAt:Date.now(),source:'unknown'}}));
@@ -122,10 +122,71 @@ test('finding new destinations excludes prior airports and exhausts without recy
   assert.deepEqual(discoveryShortlist(origins,dates,almostAll).map(option=>option.airport),['SEA']);
   assert.deepEqual(discoveryShortlist(origins,dates,AIRPORTS.map(([code])=>code)),[]);
   const seen=new Set<string>();
-  for(let round=0;round<5;round++) {
+  for(let round=0;round<8;round++) {
     const next=discoveryShortlist(origins,dates,[...seen]);
     assert.ok(next.length<=6);
     for(const option of next) { assert.equal(seen.has(option.airport),false);seen.add(option.airport); }
   }
-  assert.equal(seen.size,AIRPORTS.length);
+  assert.equal(seen.size,US_AIRPORTS.length,'National never recycles and covers every US airport');
+});
+
+const region=(code:string)=>AIRPORTS.find(a=>a[0]===code)![2];
+const usCode=(code:string)=>US_AIRPORTS.some(a=>a[0]===code);
+const scoped=(scope:'state'|'national'|'global')=>({...dates,scope});
+
+test('every airport has a region and a country, and every one has coordinates so it can be ranked',()=>{
+  for(const [code,city,reg,country] of AIRPORTS) { assert.ok(code&&city&&reg&&country,code);assert.equal(code.length,3); }
+  assert.equal(new Set(AIRPORTS.map(a=>a[0])).size,AIRPORTS.length,'no duplicate codes');
+  for(const code of ['SAT','HOU','DAL','OAK','SJC','SMF','BUR','FLL','TPA','LGA']) assert.ok(usCode(code),code);
+  for(const code of ['CUN','MEX','YYZ','YVR','LHR','CDG','FCO','BCN','HND','ICN','SJO','PVR']) assert.ok(INTERNATIONAL_AIRPORTS.some(a=>a[0]===code),code);
+  assert.equal(INTERNATIONAL_AIRPORTS.length,12);
+  for(const scope of ['national','global'] as const) for(const origin of ['ELP','ORD']) for(const c of discoveryShortlist([origin,'SEA'],scoped(scope))) assert.ok(Number.isFinite(c.id)&&c.airport);
+});
+test('state scope returns only airports in a traveler\'s home state',()=>{
+  const list=discoveryShortlist(['ELP','IAH','ORD'],scoped('state')).map(c=>c.airport);
+  assert.ok(list.length>0&&list.length<=6);
+  assert.ok(list.every(code=>usCode(code)&&['TX','IL'].includes(region(code))),list.join());
+  assert.ok(list.includes('AUS')&&list.includes('DFW'),'Texas and Illinois destinations are in the pool');
+  const txOnly=discoveryShortlist(['ELP','IAH'],scoped('state')).map(c=>c.airport);
+  assert.ok(txOnly.every(code=>region(code)==='TX'),txOnly.join());
+  assert.ok(!txOnly.includes('ORD')&&!txOnly.includes('DEN'));
+  const nw=discoveryShortlist(['SEA','PDX'],scoped('state')).map(c=>c.airport).sort();
+  assert.deepEqual(nw,['PDX','SEA'],'Washington and Oregon only have these two in the supported list');
+  assert.ok(discoveryShortlist(['SEA','PDX'],scoped('national')).some(c=>!['PDX','SEA'].includes(c.airport)),'National reaches further, so the state filter is doing the work');
+  const ca=discoveryShortlist(['SFO','LAX'],scoped('state')).map(c=>c.airport);
+  assert.ok(ca.length===6&&ca.every(code=>region(code)==='CA'),ca.join());
+});
+test('state scope with nothing beyond everyone\'s own airport says so and points to National',()=>{
+  assert.throws(()=>discoveryShortlist(['DEN','DEN'],scoped('state')),e=>e instanceof TravelInputError&&e.message==='Not enough airports in your state. Try National.');
+  assert.throws(()=>discoveryShortlist(['SLC'],scoped('state')),/Try National/);
+  assert.ok(discoveryShortlist(['DEN','DEN'],scoped('national')).length>0);
+});
+test('global scope returns only international airports, capped at six, and never a home city',()=>{
+  const list=discoveryShortlist(['ELP','IAH','ORD'],scoped('global')).map(c=>c.airport);
+  assert.equal(list.length,6);assert.ok(list.every(code=>INTERNATIONAL_AIRPORTS.some(a=>a[0]===code)),list.join());
+});
+test('national is every US airport and no international one',()=>{
+  const list=discoveryShortlist(['ELP','IAH','ORD'],scoped('national')).map(c=>c.airport);
+  assert.ok(list.every(usCode));assert.deepEqual(list,candidates.map(c=>c.airport));
+});
+test('a trip saved without scope behaves as National',()=>{
+  const legacy={version:1,mode:'discover',depart:dates.depart,return:dates.return};
+  assert.equal(readDates(legacy)!.scope,'national');
+  assert.equal(readDates([{airport:'AUS',depart:dates.depart,return:dates.return}])!.scope,'national','old candidate arrays too');
+  assert.deepEqual(discoveryShortlist(['ELP','IAH','ORD'],readDates(legacy)!),candidates);
+  assert.equal(validateDates(legacy).scope,'national');
+});
+test('scope is kept when valid and rejected when unknown',()=>{
+  for(const scope of ['state','national','global'] as const) assert.equal(readDates({...dates,scope})!.scope,scope);
+  for(const bad of ['galaxy','',null,1,'GLOBAL']) assert.equal(readDates({...dates,scope:bad}),null,String(bad));
+  assert.equal(defaultDates().scope,'national');
+});
+test('home airports stay US only, destinations can be international, and flight lookups accept both',()=>{
+  assert.equal(validAirport('CUN'),true);assert.equal(validHomeAirport('CUN'),false);assert.equal(validHomeAirport('AUS'),true);
+  assert.throws(()=>validateSetup({airport:'CUN',budget:200}),/supported US list/);
+  assert.equal(validateSetup({airport:'AUS',budget:200}).airport,'AUS');
+  assert.throws(()=>discoveryShortlist(['CUN'],dates),/home airport/);
+  const p=flightParams('AUS',{id:1,airport:'CUN',depart:'2027-03-10',return:'2027-03-14'});
+  assert.equal(p.arrival_id,'CUN');assert.equal(p.departure_id,'AUS');assert.equal(p.currency,'USD');
+  assert.throws(()=>flightParams('AUS',{id:1,airport:'XXX',depart:'2027-03-10',return:'2027-03-14'}),/Unsupported/);
 });

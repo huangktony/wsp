@@ -245,3 +245,17 @@ test('setup suggestions come from the member\'s own available money, only for a 
   assert.equal((await f.service.ownSetup(5,2)).suggestions,null,'another member is not affected');
   const raw=JSON.stringify(await f.service.readTrip(5,1));assert.ok(!raw.includes('suggestions')&&!raw.includes('"flex"'),'never part of the trip payload');
 });
+test('trip scope saves through the dates path, bumps the revision when it changes, and a legacy trip reads as National',async()=>{
+  const f=fixture();const base=discovery.defaultDates();
+  assert.equal((await f.service.readTrip(5,1)).dates?.scope,'national','legacy candidates read as National');
+  const legacy={...f.trip.candidates[0]};
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return}});
+  assert.equal(f.trip.revision,1,'saving the same dates as National changes nothing for a legacy trip');
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return,scope:'global'}});
+  assert.equal(f.trip.revision,2,'a scope change invalidates old searches like a date change');
+  assert.equal((await f.service.readTrip(5,1)).dates.scope,'global');
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return,scope:'global'}});
+  assert.equal(f.trip.revision,2,'saving the same scope again changes nothing');
+  await assert.rejects(f.service.saveDates(5,1,{dates:{...base,scope:'galaxy'}}),e=>e.message.includes('future departure'));
+  await assert.rejects(f.service.saveDates(5,2,{dates:{...base,scope:'state'}}),e=>e.status===403);
+});

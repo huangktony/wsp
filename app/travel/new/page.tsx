@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google';
 import { BackButton } from '@/components/BackButton';
 import { InviteCodeInput } from '@/components/InviteCodeInput';
 import { Page } from '@/components/Page';
-import { DatesEditor } from '@/components/TravelUI';
+import { DatesEditor, ScopePicker } from '@/components/TravelUI';
 import { api } from '@/lib/client';
 import { TRAVEL_CODE } from '@/lib/inviteCodeInput';
 import { defaultDates, validateDates } from '@/lib/travel/discovery';
@@ -41,6 +41,7 @@ export default function CreateTrip() {
       <form id="create-trip" aria-label="Create trip" className="flex flex-col gap-3" onSubmit={e=>{e.preventDefault();if(!name.trim()||busy)return;return run('create',async()=>{const sharedDates=validateDates(dates);return api('/api/travel','POST',{name,dates:sharedDates});});}}>
         <input type="text" required maxLength={60} aria-label="Trip name" placeholder="Trip name" value={name} onChange={e=>setName(e.target.value)} aria-describedby={createError?'create-trip-error':undefined} className={input} />
         <DatesEditor value={dates} onChange={setDates} tall />
+        <ScopePicker value={dates.scope} onChange={scope=>setDates({...dates,scope})} tall />
         {createError&&<p id="create-trip-error" role="alert" className="text-sm text-maroon">{createError}</p>}
       </form>
       <div className="flex items-center gap-3 text-[13px] font-bold text-secondary">

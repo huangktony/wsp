@@ -140,7 +140,8 @@ export async function saveDates(id: number, uid: number, body: any) {
   return locked(id, uid, async (c, trip) => {
     organizer(trip, uid);
     if ((await savedFinal(c, id))?.ballot.finalConfirmedAt) throw new TravelError('The meeting place is confirmed. Shared dates are locked.', 409);
-    if (JSON.stringify(options) !== JSON.stringify(trip.candidates)) {
+    // Compare the normalized saved value, so a trip saved before scope existed is not 'changed' by being re-saved as National.
+    if (JSON.stringify(options) !== JSON.stringify(readDates(trip.candidates))) {
       await c.query('update travel_trips set candidates=$2::jsonb where id=$1', [id, JSON.stringify(options)]);
       await invalidate(c, id);
     }

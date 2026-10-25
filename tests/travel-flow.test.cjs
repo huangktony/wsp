@@ -7,7 +7,7 @@ const discovery=load('lib/travel/discovery.ts',{'./core':core,'./finance':financ
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Array.isArray(n)?n.map(text).join(''):text(n.props?.children);
 const inviteLib=load('lib/inviteCodeInput.ts');
-const ui={TravelFrame:'main',TravelSkeleton:'skeleton',FareWarning:'fare-warning',TravelArt:'art',DatesEditor:'editor',DiscoverySummaryNote:'summary',ComparisonCards:'cards',TravelNotice:'notice',AirportSelect:'airport',travelButton:'primary',travelQuiet:'quiet',travelInput:'input',travelFocus:'focus'};
+const ui={TravelFrame:'main',TravelSkeleton:'skeleton',FareWarning:'fare-warning',TravelArt:'art',DatesEditor:'editor',ScopePicker:'scope',DiscoverySummaryNote:'summary',ComparisonCards:'cards',TravelNotice:'notice',AirportSelect:'airport',travelButton:'primary',travelQuiet:'quiet',travelInput:'input',travelFocus:'focus'};
 function harness(file,initial){
   let data=initial,index=0,refIndex=0,effects=[],calls=[],routes=[];const state=[],refs=[];
   const router={replace:path=>routes.push(path),push:path=>routes.push(path)};
@@ -253,4 +253,17 @@ test('setup: chips show their own dollar amounts and the basis line; the fixed f
     const fixed=screen('app/travel/[id]/setup/page.tsx',{airport:'ELP',budget:null,suggestions:none});
     assert.match(fixed.txt,/\$200Keep it light/);assert.match(fixed.txt,/\$700More flexibility/);assert.ok(!/Based on your/.test(fixed.txt));
   }
+});
+test('scope: the create page defaults to National and sends the chosen scope; the lobby shows it and the organizer can change it',async()=>{
+  const h=harness('app/travel/new/page.tsx',null);let tree=h.render();
+  const picker=nodes(tree).find(n=>n.type==='scope');assert.equal(picker.props.value,'national');
+  picker.props.onChange('state');tree=h.render();assert.equal(nodes(tree).find(n=>n.type==='scope').props.value,'state');
+  typeName(h);h.setRespond(async()=>({id:8}));await createForm(h.render()).props.onSubmit({preventDefault(){}});
+  assert.equal(h.calls[0][2].dates.scope,'state');
+  const lobby=screen('app/travel/[id]/page.tsx',trip(null,{}));
+  assert.match(lobby.txt,/When you’ll meet.*· National/);
+  const lh=harness('app/travel/[id]/page.tsx',{...trip(null),dates:{...trip(null).dates,scope:'global'}});let lt=lh.render();
+  assert.match(text(lt),/· Global/);
+  lh.effect();lt=lh.render();nodes(lt).find(n=>n.type==='button'&&text(n)==='Edit shared dates').props.onClick();lt=lh.render();
+  const edit=nodes(lt).find(n=>n.type==='scope');assert.equal(edit.props.value,'global');
 });

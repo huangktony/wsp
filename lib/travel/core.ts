@@ -1,15 +1,32 @@
 // Shared, pure travel rules. Safe for the public sample demo: no accounts, DB or providers.
 export class TravelInputError extends Error {}
-export const AIRPORTS = [
-  ['AUS', 'Austin'], ['DEN', 'Denver'], ['ELP', 'El Paso'], ['IAH', 'Houston'],
-  ['ORD', 'Chicago'], ['ATL', 'Atlanta'], ['BOS', 'Boston'], ['CLT', 'Charlotte'],
-  ['DFW', 'Dallas–Fort Worth'], ['DTW', 'Detroit'], ['EWR', 'Newark'], ['IAD', 'Washington Dulles'],
-  ['JFK', 'New York JFK'], ['LAS', 'Las Vegas'], ['LAX', 'Los Angeles'], ['MCO', 'Orlando'],
-  ['MIA', 'Miami'], ['MSP', 'Minneapolis'], ['PDX', 'Portland'], ['PHL', 'Philadelphia'],
-  ['PHX', 'Phoenix'], ['SAN', 'San Diego'], ['SEA', 'Seattle'], ['SFO', 'San Francisco'], ['SLC', 'Salt Lake City'],
-] as const;
+// [code, city, region, country]. Region is the US state, or the country code for international airports.
+// Home airports are US only; international ones are destinations. Coordinates live in discovery.ts `geography`.
+export const AIRPORTS: readonly (readonly [code: string, city: string, region: string, country: string])[] = [
+  ['AUS', 'Austin', 'TX', 'US'], ['DEN', 'Denver', 'CO', 'US'], ['ELP', 'El Paso', 'TX', 'US'], ['IAH', 'Houston', 'TX', 'US'],
+  ['ORD', 'Chicago', 'IL', 'US'], ['ATL', 'Atlanta', 'GA', 'US'], ['BOS', 'Boston', 'MA', 'US'], ['CLT', 'Charlotte', 'NC', 'US'],
+  ['DFW', 'Dallas–Fort Worth', 'TX', 'US'], ['DTW', 'Detroit', 'MI', 'US'], ['EWR', 'Newark', 'NJ', 'US'], ['IAD', 'Washington Dulles', 'VA', 'US'],
+  ['JFK', 'New York JFK', 'NY', 'US'], ['LAS', 'Las Vegas', 'NV', 'US'], ['LAX', 'Los Angeles', 'CA', 'US'], ['MCO', 'Orlando', 'FL', 'US'],
+  ['MIA', 'Miami', 'FL', 'US'], ['MSP', 'Minneapolis', 'MN', 'US'], ['PDX', 'Portland', 'OR', 'US'], ['PHL', 'Philadelphia', 'PA', 'US'],
+  ['PHX', 'Phoenix', 'AZ', 'US'], ['SAN', 'San Diego', 'CA', 'US'], ['SEA', 'Seattle', 'WA', 'US'], ['SFO', 'San Francisco', 'CA', 'US'], ['SLC', 'Salt Lake City', 'UT', 'US'],
+  ['SAT', 'San Antonio', 'TX', 'US'], ['HOU', 'Houston Hobby', 'TX', 'US'], ['DAL', 'Dallas Love Field', 'TX', 'US'],
+  ['OAK', 'Oakland', 'CA', 'US'], ['SJC', 'San Jose', 'CA', 'US'], ['SMF', 'Sacramento', 'CA', 'US'], ['BUR', 'Burbank', 'CA', 'US'],
+  ['FLL', 'Fort Lauderdale', 'FL', 'US'], ['TPA', 'Tampa', 'FL', 'US'], ['LGA', 'New York LaGuardia', 'NY', 'US'],
+  ['CUN', 'Cancún', 'MX', 'MX'], ['MEX', 'Mexico City', 'MX', 'MX'], ['PVR', 'Puerto Vallarta', 'MX', 'MX'],
+  ['YYZ', 'Toronto', 'CA', 'CA'], ['YVR', 'Vancouver', 'CA', 'CA'], ['LHR', 'London', 'GB', 'GB'], ['CDG', 'Paris', 'FR', 'FR'],
+  ['FCO', 'Rome', 'IT', 'IT'], ['BCN', 'Barcelona', 'ES', 'ES'], ['HND', 'Tokyo', 'JP', 'JP'], ['ICN', 'Seoul', 'KR', 'KR'], ['SJO', 'San José, Costa Rica', 'CR', 'CR'],
+];
 export const airportName = (code: string) => AIRPORTS.find(a => a[0] === code)?.[1] ?? code;
+/** Any supported airport, US or international (destinations and flight lookups). */
 export const validAirport = (code: unknown): code is string => typeof code === 'string' && AIRPORTS.some(a => a[0] === code);
+export const US_AIRPORTS = AIRPORTS.filter(a => a[3] === 'US');
+export const INTERNATIONAL_AIRPORTS = AIRPORTS.filter(a => a[3] !== 'US');
+/** Home airports are US only. */
+export const validHomeAirport = (code: unknown): code is string => typeof code === 'string' && US_AIRPORTS.some(a => a[0] === code);
+export const airportRegion = (code: string) => AIRPORTS.find(a => a[0] === code)?.[2];
+export type TripScope = 'state' | 'national' | 'global';
+export const SCOPES: readonly { value: TripScope; label: string }[] = [{ value: 'state', label: 'In-state' }, { value: 'national', label: 'National' }, { value: 'global', label: 'Global' }];
+export const scopeLabel = (scope: TripScope) => SCOPES.find(s => s.value === scope)?.label ?? 'National';
 export type Candidate = { id: number; airport: string; depart: string; return: string };
 export type Vote = 'approve' | 'veto';
 export type Ballot = { userId: number; optionId: number; value: Vote };
@@ -39,7 +56,7 @@ export function validateCandidates(input: unknown, now = new Date()): Candidate[
   });
 }
 export function validateSetup(input: any) {
-  if (!input || !validAirport(input.airport)) throw new TravelInputError('Choose your home airport from the supported US list.');
+  if (!input || !validHomeAirport(input.airport)) throw new TravelInputError('Choose your home airport from the supported US list.');
   if (typeof input.budget !== 'number' || !Number.isFinite(input.budget) || input.budget < 0.01 || input.budget > 100000) throw new TravelInputError('Enter a flight budget greater than $0 and at most $100,000.');
   return { airport: input.airport as string, budget: Math.round(input.budget * 100) / 100 };
 }

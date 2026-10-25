@@ -21,6 +21,11 @@ function load(file, mocks = {}, globals = {}) {
     ...globals,
     require(name) {
       if (name in mocks) return mocks[name];
+      if (name === './voting' || name === '@/lib/voting') return load('lib/voting.ts', {
+        '@/lib/db': mocks['./db'] ?? mocks['@/lib/db'],
+        './roundParticipation': load('lib/roundParticipation.ts'),
+      });
+      if (name === './votingRules' || name === '@/lib/votingRules') return load('lib/votingRules.ts', {});
       if (name === "@/components/RedrawVote") return { RedrawVote: "redraw" };
       if (name === './roundParticipation' || name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
       if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };
@@ -1131,11 +1136,12 @@ test('redraw snapshots current city/preferences, and failure restores final only
   const old = { id: 10, status: 'final', attempt: 1, excluded: [], requests_sent: false };
   let latest = old, inserted, cleared = false;
   const query = async (sql, args) => {
+    sql = sql.trim();
     if (sql.startsWith('select 1 from memberships')) return { rows: [{}] };
     if (sql.startsWith('select id,status,attempt')) return { rows: [old] };
     if (sql.startsWith('delete from redraw_votes')) { cleared = true; return { rows: [], rowCount: 0 }; }
     if (sql.includes(') members,')) return { rows: [{ members: 1, votes: 1 }] };
-    if (sql.startsWith("update plan_rounds set status='redrawn'")) { old.status = 'redrawn'; return { rows: [{ winner_plan_id: 101 }], rowCount: 1 }; }
+    if (/update plan_rounds(?: r)? set status='redrawn'/.test(sql)) { old.status = 'redrawn'; return { rows: [{ winner_plan_id: 101 }], rowCount: 1 }; }
     if (sql.startsWith('select distinct')) return { rows: [{ place: 'Old cafe' }] };
     if (sql.startsWith('select city')) return { rows: [{ city: 'Houston, TX' }] };
     if (sql.startsWith('select m.user_id')) return { rows: searchMembers };
@@ -1168,7 +1174,7 @@ test('redraw snapshots current city/preferences, and failure restores final only
   assert.equal(cleared, false);
 });
 
-test('settlement closes expired or complete ballots, but cannot finalize an obsolete round', async () => {
+test('settlement closes expired or confirmed ballots, but cannot finalize an obsolete round', async () => {
   for (const condition of ['expired', 'complete', 'open', 'obsolete']) {
     let status = 'voting', writes = 0;
     const { settleRound } = load('lib/pipeline.ts', {
@@ -1176,6 +1182,7 @@ test('settlement closes expired or complete ballots, but cannot finalize an obso
       './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
       './db': {
         q1: async sql => {
+          if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
           if (sql.startsWith('select status')) return { status };
           const normalized = sql.replace(/\s+/g, ' ').trim();
           assert.match(normalized, /r\.id\s*=\s*\(\s*select (?:latest\.)?id from plan_rounds/);
@@ -1184,6 +1191,7 @@ test('settlement closes expired or complete ballots, but cannot finalize an obso
           return { id: 10, group_id: 5, status, expired: condition === 'expired', plans: 2, members: 2, votes: condition === 'complete' ? 4 : 1 };
         },
         q: async sql => {
+          if (sql.includes('from vote_confirmations')) return condition === 'complete' ? [{ user_id: 1 }, { user_id: 2 }] : [];
           if (/from plans p\s+join plan_rounds r/.test(sql) && /left join votes v/.test(sql)) {
             return [{ id: 101, cost: 12, approves: 1, vetoes: 0 }];
           }

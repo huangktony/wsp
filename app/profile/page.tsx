@@ -4,14 +4,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Page } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, INTERESTS, toggle, useApi } from "@/lib/client";
 
 export default function Profile() {
   const r = useRouter();
-  const { data } = useApi<any>("/api/me");
+  const { data, error } = useApi<any>("/api/me");
   const [it, setIt] = useState<string[]>([]), [mi, setMi] = useState(10), [saved, setSaved] = useState(false);
   useEffect(() => { if (data) { setIt(data.interests); setMi(data.max_distance_mi); } }, [data]);
-  if (!data) return <Page title="Profile" tabs>Loading…</Page>;
+  if (!data) return (
+    <Page tabs>
+      {error ? <p role="alert" className="text-sm font-semibold text-deep">{error}</p> : (
+        <Skeleton>
+          <SkeletonBlock className="mb-4 h-9 w-1/2" />
+          <div className="space-y-6">
+            <SkeletonBlock className="h-[58px]" />
+            <div><SkeletonBlock className="mb-2 h-5 w-24" /><div className="flex gap-2"><SkeletonBlock className="h-10 w-20 !rounded-full" /><SkeletonBlock className="h-10 w-24 !rounded-full" /><SkeletonBlock className="h-10 w-28 !rounded-full" /></div></div>
+            <div><SkeletonBlock className="mb-2 h-5 w-36" /><SkeletonBlock className="h-4" /></div>
+            <SkeletonBlock className="h-14" /><SkeletonBlock className="h-14" /><SkeletonBlock className="h-14" />
+          </div>
+        </Skeleton>
+      )}
+    </Page>
+  );
   return (
     <Page title={data.name} tabs>
       <div className="space-y-6">

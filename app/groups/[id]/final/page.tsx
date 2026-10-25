@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Inter } from "next/font/google";
 import { use, useState } from "react";
 import { Page, Err } from "@/components/Page";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
 
@@ -24,12 +25,30 @@ function downloadIcs(title: string, slot: string, from: string, stops: any[]) {
   a.click();
 }
 
+function FinalSkeleton() {
+  return (
+    <Skeleton>
+      <SkeletonBlock className="h-[25px] w-48 !rounded-full" />
+      <SkeletonBlock className="mt-2 h-[62px] w-3/4" />
+      <SkeletonBlock className="mb-4 h-[23px] w-1/2" />
+      <SkeletonBlock className="mb-3 h-[242px]" />
+      <SkeletonBlock className="mb-6 h-14" />
+      <SkeletonBlock className="h-[125px]" />
+      <SkeletonBlock className="my-3 h-[52px]" />
+      <SkeletonBlock className="mb-3 h-4 w-1/2" />
+      <SkeletonBlock className="mt-3 h-[255px]" />
+      <SkeletonBlock className="mt-5 h-[144px]" />
+      <SkeletonBlock className="mt-3 h-4" />
+    </Skeleton>
+  );
+}
+
 export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 4000);
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
-  if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error || (data && data.round?.status !== "final" ? "No final plan yet." : "Loading…")}</Page></div>;
+  if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : data && data.round?.status !== "final" ? "No final plan yet." : <FinalSkeleton />}</Page></div>;
 
   const { round, split, payments } = data;
   const act = (body: any) => { setBusy(true); setErr(""); return api(`/api/groups/${id}/split`, "POST", body).then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); };

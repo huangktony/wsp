@@ -150,6 +150,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
+    '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
     '@/lib/client': {
       useApi: () => ({ data: current, error: '', reload: async () => { current = structuredClone(server); return current; } }),
       api: (url, method, body) => new Promise((resolve, reject) => {
@@ -212,6 +213,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     'react/jsx-runtime': require('react/jsx-runtime'),
     'next/link': { default: 'a' },
     '@/components/BackButton': { BackButton: 'a' },
+    '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
     'next/navigation': { useRouter: () => ({ push() {} }) },

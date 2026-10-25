@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
 import { Inter } from "next/font/google";
 import { use, useEffect, useRef, useState } from "react";
+import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -90,8 +91,18 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           <h1 className="break-words font-[inherit] text-[28px] font-extrabold leading-tight tracking-[-0.5px]">{g.name}</h1>
           <p className="text-[15px] text-secondary">{[g.city, g.groupTier ? `group cap ${g.groupTier}` : null].filter(Boolean).join(" · ")}</p>
         </>}
+        {!g && !error && <><SkeletonBlock className="h-[35px] w-2/3" /><SkeletonBlock className="mt-1 h-[23px] w-1/3" /></>}
       </header>
-      {!g ? <p role={error ? "alert" : "status"} className={`text-sm ${error ? "text-maroon" : "text-secondary"}`}>{error || "Loading…"}</p> : <>
+      {!g ? (error ? <p role="alert" className="text-sm text-maroon">{error}</p> : (
+        <Skeleton className="flex flex-1 flex-col gap-[18px]">
+          <SkeletonBlock className="h-[79px]" />
+          <SkeletonBlock className="h-[94px] !rounded-[20px]" />
+          <div><SkeletonBlock className="mb-1.5 h-5 w-20" /><div className="space-y-1.5">{[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} className="h-[60px]" />)}</div></div>
+          <div className="mt-auto flex flex-col gap-2.5">
+            <SkeletonBlock className="h-[18px]" /><SkeletonBlock className="h-[54px]" /><SkeletonBlock className="h-[76px] !rounded-full" /><SkeletonBlock className="h-[50px] !rounded-full" /><SkeletonBlock className="h-12 !rounded-full" />
+          </div>
+        </Skeleton>
+      )) : <>
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {open ? "voting" : "setup"}</span></span>

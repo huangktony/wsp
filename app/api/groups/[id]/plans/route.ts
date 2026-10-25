@@ -1,4 +1,5 @@
-import { resolveRoundCity } from "@/lib/finding";
+import { roundInclusion, includedVoteSql } from "@/lib/roundParticipation";
+import { resolveRoundCity, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
 import { MissingCityError, PlaceSearchError } from "@/lib/serpapi";
 import { getVotingParticipation } from "@/lib/voting";
 import { q, q1 } from "@/lib/db";
@@ -30,7 +31,7 @@ export async function POST(
   const id = Number((await params).id);
   if (!(await isMember(id, uid))) return fail("not in this group", 403);
   if (!(await setupDone(id, uid))) {
-    return fail("finish your setup first", 409);
+    return fail(SETUP_REQUIRED_MESSAGE, 409);
   }
 
   try {
@@ -84,7 +85,7 @@ export async function GET(
   if (round.status === "voting") await settleRound(round.id);
 
   round = await q1<any>(
-    `select id,status,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
+    `select id,status,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
        greatest(0, extract(epoch from vote_deadline - now()))::int seconds_left
      from plan_rounds r where id=$1`,
     [round.id],
@@ -97,7 +98,7 @@ export async function GET(
     `select p.id,p.title,p.summary,p.stops,p.est_cost_per_person::float cost,p.price_level,p.why_fits,
        count(v.*) filter (where v.value='approve')::int approve, count(v.*) filter (where v.value='pass')::int veto,
        max(v.value) filter (where v.user_id=$2) my_vote
-     from plans p left join votes v on v.plan_id=p.id where p.round_id=$1 group by p.id order by p.id`,
+     from plans p join plan_rounds r on r.id=p.round_id left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")} where p.round_id=$1 group by p.id order by p.id`,
     [round.id, uid],
   );
 
@@ -109,9 +110,8 @@ export async function GET(
       delete p.veto;
     }
   }
-
-  const members = await q<{ id: number; name: string }>(
-    "select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
+  const members = await q<{ id: number; name: string; setup_done: boolean }>(
+    "select u.id,u.name,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at",
     [id],
   );
   const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
@@ -122,13 +122,17 @@ export async function GET(
     split = await computeSplit(round.id);
     await refreshTransferStatuses(round.id);
     payments = await q<any>(
-      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.transfer_status from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id",
+      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.transfer_status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id",
       [round.id],
     );
   }
+
+  const inclusion = roundInclusion(round, members, uid);
+  const { search_settings, ...publicRound } = round;
   return json({
     ...base,
-    round,
+    round: publicRound,
+    inclusion,
     plans,
     members,
     memberCount,

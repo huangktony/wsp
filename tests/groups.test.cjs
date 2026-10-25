@@ -12,6 +12,7 @@ function load(file, mocks, globals = {}) {
   }).outputText;
   vm.runInNewContext(code, { exports, ...globals, require(name) {
     if (name in mocks) return mocks[name];
+    if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
     throw Error(`Unmocked import: ${name}`);
   } }, { filename: file });
   return exports;

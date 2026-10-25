@@ -18,7 +18,7 @@ export default function Settings() {
   useEffect(() => { const p = getThemePref(); setTheme(p === "system" ? resolvedTheme() : p); }, []);
   const choose = (t: Theme) => { setTheme(t); setThemePref(t); };
   return (
-    <Page variant="plain" tabs>
+    <Page variant="plain">
       <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
       <BackButton href="/profile" className="mb-3" />
       <h1 className="mb-4 font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Settings</h1>

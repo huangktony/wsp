@@ -1,4 +1,5 @@
 "use client";
+import { groupHref } from "@/lib/finding";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -27,7 +28,7 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
     <button type="button" onClick={click} className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${on ? "border-sage bg-sage text-sageink" : "border-line"}`}>{v}</button>
   );
   return (
-    <Page title="My setup" back={data?.availability?.length ? `/groups/${id}` : "/groups"}>
+    <Page title="My setup" back={data?.availability?.length ? groupHref({ ...group, id }) : "/groups"}>
       <div className="space-y-6">
         <section><span className="label">When are you free?</span><div className="flex flex-wrap gap-2">{SLOTS.map((s) => <Chip key={s} v={s} on={av.includes(s)} click={() => setAv(toggle(av, s))} />)}</div></section>
         <section><span className="label">Interests</span><div className="flex flex-wrap gap-2">{INTERESTS.map((s) => <Chip key={s} v={s} on={it.includes(s)} click={() => setIt(toggle(it, s))} />)}</div></section>
@@ -40,7 +41,7 @@ export default function Setup({ params }: { params: Promise<{ id: string }> }) {
         </section>
         {data && !av.length && <p className="text-sm text-muted">Pick at least one time you're free.</p>}
         <Err msg={err} />
-        <button className="btn" disabled={!data || !av.length} onClick={() => api(`/api/groups/${id}/me`, "PUT", { availability: av, interests: it, max_distance_mi: mi, comfort_tier: picked }).then(() => r.push(`/groups/${id}`)).catch((e) => setErr(e.message))}>Save</button>
+        <button className="btn" disabled={!data || !av.length} onClick={() => api(`/api/groups/${id}/me`, "PUT", { availability: av, interests: it, max_distance_mi: mi, comfort_tier: picked }).then(() => api(`/api/groups/${id}`)).then((saved) => r.push(groupHref({ ...saved, id }))).catch((e) => setErr(e.message))}>Save</button>
       </div>
     </Page>
   );

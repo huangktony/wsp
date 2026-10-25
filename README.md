@@ -139,3 +139,60 @@ Owned by person 4. Files: `app/groups/[id]/finding`, `plans`, `final`, `app/api/
 Round status values (`plan_rounds.status`): `generating`, `voting`, `vetoed`, `final`, `failed`. Group screens can use these for the card status.
 
 For person 2: the create-group voting deadline (6/12/24/48h) should be saved to `groups.vote_hours`.
+
+### City-aware plan searches
+
+Before starting new plan searches against an existing database, review and apply
+`db/migrations/20261024_round_search_context.sql` through your normal database change process.
+It leaves the existing NOT NULL coordinate constraints intact and records each round's city, distance limit,
+sample-data flag, and safe search error. Existing rounds remain readable before the migration: optional fields are read through JSON,
+and a missing/NULL search city resolves to Austin, TX (30.2672, -97.7431), as agreed
+for legacy rounds. Stored round cities always take precedence. New searches require the migration to preserve their city snapshot.
+The migration has not been applied by the assistant. `db:migrate` runs only the additive CREATE/ALTER statements currently in `db/schema.sql`
+(but DDL can take locks). `db:seed` truncates all eight application tables and resets identities;
+`db:setup` runs that destructive seed after migrating. Never use either for this shared-database update.
+
+Live place search requires `SERPAPI_KEY`. `USE_MOCKS` now controls Nessie/Gemini only;
+it no longer replaces place searches. `USE_SAMPLE_PLACES` is optional and must be
+explicitly enabled to produce synthetic venues, labeled **Sample data** in the UI.
+Leave it unset or disabled for real places. Restart the dev server after env changes.
+No API keys are logged. Search failures appear in the Finding plans screen.
+
+Creation validates a US city and state, geocodes it, and saves the city and coordinates with the creator membership in one transaction. There is currently no city-edit UI for
+existing groups. New rounds snapshot the saved city and the smallest member distance
+preference, use the group's saved coordinates when the city matches (otherwise geocode the round's saved city), and filter venues by straight-line miles from that city
+center. Maps results without coordinates are excluded rather than assumed nearby.
+The diagnostic command accepts a city: `npm run places:check -- '$' 'Dallas, TX'`
+(it makes live provider calls and consumes search credits).
+
+### Pending round metadata migration (reviewed October 24, 2026)
+
+The four nullable additions in `db/migrations/20261024_round_search_context.sql` are
+idempotent. No data is backfilled or deleted. After team approval, run only that file
+from the repository root (requires `psql`; loads `.env.local` without printing its values):
+
+```sh
+node --env-file=.env.local -e 'const {spawnSync}=require("node:child_process"); const r=spawnSync("psql",["-X","--set=ON_ERROR_STOP=1","--single-transaction","--file=db/migrations/20261024_round_search_context.sql"],{stdio:"inherit",env:{...process.env,PGDATABASE:process.env.DATABASE_URL}}); if(r.error) console.error("Could not start psql"); process.exit(r.status ?? 1);'
+```
+
+Column audit for the finding/pipeline/voting helpers and API routes, including columns
+returned by shared helpers and table defaults (SQL result aliases and JSON keys are not
+physical columns). Compared against `db/schema.sql` and a read-only live
+`information_schema.columns` query:
+
+| Table | Columns checked | Result |
+| --- | --- | --- |
+| users | id, name, email, password_hash, nessie_customer_id, nessie_account_id, budget_tier, avg_outing_cost, max_distance_mi, interests, created_at | All present |
+| groups | id, name, city, lat, lng, invite_code, created_by, created_at, vote_hours | All present |
+| memberships | group_id, user_id, availability, joined_at, comfort_tier | All present |
+| plan_rounds | id, group_id, status, group_tier, winner_plan_id, created_at, slot, attempt, excluded, vote_deadline, payer_id, split_mode, requests_sent | All present |
+| plan_rounds | search_city (text), search_distance_mi (int), sample_places (boolean), search_error (text) | In repo schema/migration; missing from live database |
+| plans | id, round_id, title, summary, stops, est_cost_per_person, price_level, why_fits | All present |
+| votes | plan_id, user_id, value | All present |
+| payments | id, round_id, user_id, amount, status, transfer_id | All present |
+| stop_skips | round_id, user_id, stop_index | All present |
+
+The live database also has `redraw_votes(round_id, user_id)`, which is not defined in
+this checkout's schema or referenced by its API routes. It was left untouched.
+`lib/finding.ts` is pure code; its counts and `setup_done` values are derived, not
+additional database columns. No other missing columns were found.

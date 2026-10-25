@@ -40,7 +40,13 @@ test('generator uses crypto.randomInt with the exact readable alphabet', () => {
 
 function createRoute(q1, generate = () => 'WSP-BCD', q = async () => []) {
   return load('app/api/groups/route.ts', {
-    '@/lib/db': { q1, q }, '@/lib/api': api,
+    '@/lib/db': { q, pool: { connect: async () => ({ release() {}, query: async (sql, params) => {
+      if (sql.startsWith('insert into groups')) { const row = await q1(sql, params); return { rows: row ? [row] : [] }; }
+      if (sql.startsWith('insert into memberships')) return { rows: await q(sql, params) };
+      return { rows: [] };
+    } }) } }, '@/lib/api': api,
+    '@/lib/usCities': load('lib/usCities.ts', {}),
+    '@/lib/serpapi': { geocodeCity: async () => ({ latitude: 29.7604, longitude: -95.3698 }) },
     '@/lib/inviteCode': { generateInviteCode: generate },
   });
 }
@@ -51,7 +57,7 @@ test('create ignores client codes and returns the server-generated saved code', 
     assert.equal(params[4], 'WSP-BCD');
     return { id: 42, invite_code: params[4] };
   });
-  const result = await route.POST(request({ name: 'Test', city: 'Austin', inviteCode: 'client-chosen' }));
+  const result = await route.POST(request({ name: 'Test', city: 'Austin, TX', inviteCode: 'client-chosen' }));
   assert.equal(result.body.inviteCode, 'WSP-BCD');
   assert.equal(result.body.id, 42);
 });
@@ -64,7 +70,7 @@ test('ten insert collisions switch to four characters; further collisions retry'
     return inserts <= 11 ? null : { id: 42, invite_code: 'WSP-ABCD' };
   }, (length) => { lengths.push(length); return length === 3 ? 'WSP-ABC' : 'WSP-ABCD'; },
   async () => { memberships++; return []; });
-  const result = await route.POST(request({ name: 'Test', city: 'Austin' }));
+  const result = await route.POST(request({ name: 'Test', city: 'Austin, TX' }));
   assert.deepEqual(lengths, [...Array(10).fill(3), 4, 4]);
   assert.equal(memberships, 1);
   assert.equal(result.body.inviteCode, 'WSP-ABCD');
@@ -72,24 +78,28 @@ test('ten insert collisions switch to four characters; further collisions retry'
 
 test('name/city validation keeps existing errors without querying', async () => {
   const route = createRoute(async () => { throw new Error('Must not query'); });
-  for (const body of [null, {}, { name: '', city: 'Austin' }, { name: 'Test', city: '' }]) {
+  for (const body of [null, {}, { name: '', city: 'Austin, TX' }]) {
     assert.equal((await route.POST(request(body))).body.error, 'name and city required');
   }
 });
 
 test('unrelated database failures are not retried', async () => {
   const route = createRoute(async () => { throw new Error('connection unavailable'); });
-  await assert.rejects(route.POST(request({ name: 'Test', city: 'Austin' })), /connection unavailable/);
+  const result = await route.POST(request({ name: 'Test', city: 'Austin, TX' }));
+  assert.equal(result.status, 500);
+  assert.equal(result.body.error, "We couldn't create your group. Try again.");
 });
 
 test('unauthenticated creation never queries or generates a code', async () => {
   const unexpected = () => { throw new Error('Must not run'); };
   const route = load('app/api/groups/route.ts', {
-    '@/lib/db': { q1: unexpected, q: unexpected },
+    '@/lib/db': { pool: { connect: unexpected }, q: unexpected },
+    '@/lib/serpapi': { geocodeCity: unexpected },
+    '@/lib/usCities': load('lib/usCities.ts', {}),
     '@/lib/api': { ...api, requireUser: async () => api.fail('not signed in', 401) },
     '@/lib/inviteCode': { generateInviteCode: unexpected },
   });
-  assert.equal((await route.POST(request({ name: 'Test', city: 'Austin' }))).status, 401);
+  assert.equal((await route.POST(request({ name: 'Test', city: 'Austin, TX' }))).status, 401);
 });
 
 test('join trims and case-folds new and legacy codes', async () => {

@@ -1,9 +1,13 @@
-import test from "node:test";
+import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { estimatePlace, parseRealPrice, planLevel } from "../lib/price";
-import { findPlaces, placeFromResult, queryFor, type Place, type SearchFn } from "../lib/serpapi";
+import { findPlaces, placeFromResult, queryFor, type Place } from "../lib/serpapi";
 import { mockPlans, withinBudget } from "../lib/gemini";
 import type { Tier } from "../lib/tiers";
+
+const previousKey = process.env.SERPAPI_KEY;
+before(() => { process.env.SERPAPI_KEY = "test-only-not-a-secret"; });
+after(() => { if (previousKey === undefined) delete process.env.SERPAPI_KEY; else process.env.SERPAPI_KEY = previousKey; });
 
 // Fixtures modeled on a real google_maps result: title, type, types, rating, address, and NO price field.
 const R = {
@@ -72,17 +76,23 @@ test("search terms depend on the group tier", () => {
   assert.equal(queryFor("outdoors", "$$$"), "parks");
 });
 
-const fakeSearch = (results: Record<string, any[]>): SearchFn => async (cat, tier) => (results[cat] ?? []).map((r) => placeFromResult(r, cat, tier));
+const fakeSearch = (results: Record<string, any[]>) => ({ fetch: (async (url: any) => {
+  const q = new URL(url).searchParams.get("q")!;
+  const cat = Object.keys(results).find(cat => q.startsWith(queryFor(cat, "$")!));
+  return { ok: true, json: async () => cat
+    ? { local_results: results[cat].map(r => ({ ...r, gps_coordinates: { latitude: 0, longitude: 0 } })) }
+    : { place_results: { gps_coordinates: { latitude: 0, longitude: 0 } } } } as Response;
+}) as typeof fetch, sample: false });
 
 test("findPlaces: a $ group never gets a $$ or $$$ place", async () => {
-  const places = await findPlaces(["food", "entertainment", "outdoors"], 0, 0, "$", fakeSearch({ food: [R.taco, R.steak, R.bbq], entertainment: [R.club, R.beerGarden], outdoors: [R.park] }));
+  const places = await findPlaces(["food", "entertainment", "outdoors"], "Test city", "$", 10, fakeSearch({ food: [R.taco, R.steak, R.bbq], entertainment: [R.club, R.beerGarden], outdoors: [R.park] }));
   assert.ok(places.length > 0);
   assert.ok(places.every((p) => p.price === "$"), JSON.stringify(places.map((p) => [p.name, p.price])));
   assert.ok(!places.some((p) => p.name === "Perry's Steakhouse"));
 });
 
 test("findPlaces: when nothing fits it returns [] (no over-budget fallback)", async () => {
-  const places = await findPlaces(["food"], 0, 0, "$", fakeSearch({ food: [R.steak] }));
+  const places = await findPlaces(["food"], "Test city", "$", 10, fakeSearch({ food: [R.steak] }));
   assert.deepEqual(places, []);
 });
 

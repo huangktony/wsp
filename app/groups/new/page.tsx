@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Page } from "@/components/Page";
+import { CityCombobox } from "@/components/CityCombobox";
 import { api } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -12,7 +13,7 @@ const input = "box-border h-[54px] w-full rounded-2xl border-2 border-outline bg
 
 export default function NewGroup() {
   const r = useRouter();
-  const [name, setName] = useState(""), [city, setCity] = useState("Austin, TX"), [code, setCode] = useState("");
+  const [name, setName] = useState(""), [city, setCity] = useState(""), [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [action, setAction] = useState<"create" | "join" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +35,8 @@ export default function NewGroup() {
         <h1 className="font-[inherit] text-[36px] font-extrabold leading-[1.05] tracking-[-1.4px]">Start a group</h1>
         <div className="flex flex-col gap-3">
           <input type="text" aria-label="Group name" aria-describedby={err && action === "create" ? "create-error" : undefined} className={input} placeholder="Group name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input type="text" aria-label="City" aria-describedby={err && action === "create" ? "create-error" : undefined} className={input} placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} />
+          <CityCombobox value={city} onChange={setCity} className={input}
+            describedBy={err && action === "create" ? "create-error" : undefined} />
           {err && action === "create" && <p id="create-error" role="alert" className="text-sm text-maroon">{err}</p>}
         </div>
         <div className="flex items-center gap-3 text-[13px] font-bold text-secondary">

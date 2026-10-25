@@ -56,6 +56,8 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div className={typography}><Page back={`/groups/${id}`}>
+      {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
+      {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       {sent ? (
         <div className="mb-5 text-center">
           <div aria-hidden className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage text-4xl text-sageink">✓</div>

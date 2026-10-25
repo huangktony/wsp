@@ -80,6 +80,8 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div className={inter.className}><Page back={`/groups/${id}`}>
+      {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
+      {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       <p className="text-[15px] font-semibold text-secondary">{data.group.name}{data.round.attempt > 1 && ` · Round ${data.round.attempt}`}</p>
       <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">{data.plans.length} {data.plans.length === 1 ? "plan" : "plans"} for {data.round.slot}</h1>
       <div className="mb-5 flex flex-wrap gap-2 [&>span]:text-xs [&_span]:font-bold">

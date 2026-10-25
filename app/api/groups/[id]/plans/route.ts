@@ -1,7 +1,9 @@
+import { resolveRoundCity } from "@/lib/finding";
+import { MissingCityError, PlaceSearchError } from "@/lib/serpapi";
 import { getVotingParticipation } from "@/lib/voting";
 import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser, setupDone } from "@/lib/api";
-import { NoPlacesError, computeSplit, fillRound, settleRound, startRound, withStopCosts } from "@/lib/pipeline";
+import { NoPlacesError, SearchSchemaPendingError, computeSplit, fillRound, settleRound, startRound, withStopCosts } from "@/lib/pipeline";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -13,16 +15,19 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const id = Number((await params).id);
   if (!(await isMember(id, uid))) return fail("not in this group", 403);
   if (!(await setupDone(id, uid))) return fail("finish your setup first", 409);
-  const r = await startRound(id);
-  if (!r.created) return json({ roundId: r.roundId, status: r.status });
   try {
+    const r = await startRound(id);
+    if (!r.created) return json({ roundId: r.roundId, status: r.status });
     await fillRound(r.roundId);
+    return json({ roundId: r.roundId, status: "voting" });
   } catch (e) {
     // Nothing fit the budget: say so plainly. The finding screen shows this message with a Try again button.
+    if (e instanceof SearchSchemaPendingError) return fail(e.message, 503);
+    if (e instanceof PlaceSearchError) return fail(e.message, 502);
+    if (e instanceof MissingCityError) return fail(e.message, 400);
     if (e instanceof NoPlacesError) return fail(e.message, 422);
     return fail("couldn't make plans this time. Try again.", 502);
   }
-  return json({ roundId: r.roundId, status: "voting" });
 }
 
 /**
@@ -34,17 +39,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (typeof uid !== "number") return uid;
   const id = Number((await params).id);
   if (!(await isMember(id, uid))) return fail("not in this group", 403);
-  const g = await q1<any>("select name,created_by from groups where id=$1", [id]);
+  const g = await q1<any>("select name,city,created_by from groups where id=$1", [id]);
   const base = { group: { name: g.name }, me: uid, isCreator: g.created_by === uid };
 
   let round = await q1<any>("select id,status from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [id]);
   if (!round) return json({ ...base, round: null, plans: [] });
   if (round.status === "voting") await settleRound(round.id);
   round = await q1<any>(
-    `select id,status,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
+    `select id,status,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
        greatest(0, extract(epoch from vote_deadline - now()))::int seconds_left
-     from plan_rounds where id=$1`, [round.id]);
+     from plan_rounds r where id=$1`, [round.id]);
 
+  round.search_city = resolveRoundCity(round).city;
   const open = round.status === "voting" || round.status === "generating";
   const plans = await q<any>(
     `select p.id,p.title,p.summary,p.stops,p.est_cost_per_person::float cost,p.price_level,p.why_fits,

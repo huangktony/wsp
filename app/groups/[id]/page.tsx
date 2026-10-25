@@ -58,6 +58,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const others = members.filter((member) => member.id !== g?.me);
   const isOwner = g?.isCreator === true;
   const soloOwner = isOwner && others.length === 0;
+  const needsNewSearch = g?.finding?.needsNewSearch === true || g?.finding?.cityChanged === true;
   const open = g?.roundOpen === true, final = g?.round?.status === "final";
   const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
@@ -126,9 +127,9 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
-          {open && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
+          {open && !needsNewSearch && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {!open && <Link href={`/groups/${id}/finding${final ? "?new=1" : ""}`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
+          {(!open || needsNewSearch) && <Link href={`/groups/${id}/finding${final || needsNewSearch ? "?new=1" : ""}`} className={primary}>{final || needsNewSearch ? "Find new plans" : "Find plans"}</Link>}
           <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>

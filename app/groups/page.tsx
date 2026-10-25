@@ -48,6 +48,8 @@ function GroupsContent() {
   );
   const featured = (results?.find(({ group }) => group.status === "VOTING OPEN") ?? results?.[0])?.group;
 
+  const needsVote = featured?.status === "VOTING OPEN" && !featured.my_voted;
+  const canVote = featured?.status === "VOTING OPEN";
   return (
     <Page variant="plain" tabs>
       <div className={`${inter.className} bg-surface text-indigo`}>
@@ -91,10 +93,10 @@ function GroupsContent() {
         <div className="flex flex-col gap-4 px-6">
           {error && <p role="alert" className="rounded-[20px] border border-orchid bg-surface p-4 text-sm text-maroon">{error}</p>}
           {featured && (
-            <article className="relative flex flex-col rounded-3xl bg-pistachio">
-              <div className="flex h-[84px] items-start justify-between rounded-t-3xl bg-matcha px-[18px] py-4">
+            <article className={`relative flex flex-col rounded-3xl ${needsVote ? "bg-orchid/40" : "bg-pistachio"}`}>
+              <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? "bg-orchid" : "bg-matcha"} px-[18px] py-4`}>
                 {featured.status && <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
-                <Smiley size={48} />
+                <Smiley size={48} fill={needsVote ? "fill-pistachio" : undefined} />
               </div>
               <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
                 <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
@@ -102,7 +104,7 @@ function GroupsContent() {
                 </h2>
                 <p className="text-sm text-secondary">{meta(featured)}</p>
                 <div className="mt-1.5 flex items-center justify-end">
-                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>Vote now <span aria-hidden="true">→</span></Link>
+                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>{needsVote || !canVote ? "Vote now" : "Change vote"} <span aria-hidden="true">→</span></Link>
                 </div>
               </div>
             </article>

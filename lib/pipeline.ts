@@ -1,5 +1,3 @@
-import { planTallies, confirmedMemberIds } from "./voting";
-import { isRemoved, shouldClose, chooseWinner } from "./votingRules";
 import { includedVoteSql } from "./roundParticipation";
 import {
   roundSettings,
@@ -18,16 +16,20 @@ import {
   type Place,
 } from "./serpapi";
 import { planLevel } from "./price";
-import { generatePlans } from "./meta";
+import { generatePlans } from "./gemini";
 import { splitAmounts, type SplitMode } from "./split";
+import { confirmedMemberIds, planTallies } from "./voting";
+import { chooseWinner, isRemoved, shouldClose } from "./votingRules";
 
 /*
  * Plan round lifecycle (plan_rounds.status):
  *   generating -> voting -> final      (a plan won)
- *                        -> vetoed     (every plan was vetoed, none approved; next round leaves those places out)
+ *                        -> vetoed     (no plan was approved, or a majority vetoed every plan; next round leaves vetoed places out)
  *   generating -> failed               (generation crashed or stalled)
  *   generating/voting -> superseded    (a new search replaced this attempt)
- * After final, the payer (group creator) picks even / by item split and sends requests (requests_sent).
+ * During voting a plan a majority vetoed is removed, and each member's votes are final once they confirm them.
+ * After final, the creator confirms the plan (confirmed_at), then the payer (group creator) picks even / by item split
+ * and sends requests (requests_sent).
  */
 
 /** Nothing within the group budget was found. The message is shown to the user as is. */
@@ -380,39 +382,6 @@ export async function runFindPlans(groupId: number): Promise<number> {
   if (r.created) await fillRound(r.roundId);
   return r.roundId;
 }
-
-/** Most approvals wins; then fewest vetoes; ties go to lower cost. */
-export async function pickWinner(roundId: number) {
-  const rows = await q<any>(
-    `select p.id, p.est_cost_per_person::float cost,
-       count(v.*) filter (where v.value='approve')::int approves,
-       count(v.*) filter (where v.value='pass')::int vetoes
-     from plans p
-     join plan_rounds r on r.id=p.round_id
-     left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")}
-     where p.round_id=$1
-     group by p.id
-     order by approves desc, vetoes asc, cost asc, p.id asc`,
-    [roundId],
-  );
-
-  return {
-    id: rows[0].id as number,
-    approves: rows[0].approves as number,
-    allVetoed: rows.every((r) => r.approves === 0 && r.vetoes > 0),
-  };
-}
-
-/*
- * Plan round lifecycle (plan_rounds.status):
- *   generating -> voting -> final      (a plan won)
- *                        -> vetoed     (no plan was approved, or a majority vetoed every plan; next round leaves vetoed places out)
- *   generating -> failed               (generation crashed or stalled)
- *   generating/voting -> superseded    (a new search replaced this attempt)
- * During voting a plan a majority vetoed is removed, and each member's votes are final once they confirm them.
- * After final, the creator confirms the plan (confirmed_at), then the payer (group creator) picks even / by item split
- * and sends requests (requests_sent).
- */
 
 /**
  * Closes voting when the deadline passed, every included member confirmed their votes,

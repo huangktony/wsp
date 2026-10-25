@@ -1,6 +1,7 @@
 "use client";
 import { InclusionBanner } from "@/components/RoundInclusion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Inter } from "next/font/google";
 import { use, useState } from "react";
 import { Page, Err } from "@/components/Page";
@@ -54,6 +55,8 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false), [reminded, setReminded] = useState<number | null>(null);
   // The change being saved, shown right away instead of waiting for the server and the reload.
   const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const router = useRouter();
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
   if (!data || !plan || !data.split) return <div className={typography}><Page back="/groups">{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : data && data.round?.status !== "final" ? "No final plan yet." : <FinalSkeleton />}</Page></div>;
 
@@ -80,6 +83,12 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const paid = payments.filter((p: any) => p.status === "paid");
   const unpaid = payments.filter((p: any) => p.status === "owed");
   const pending = payments.filter((p: any) => p.status === "owed").reduce((a: number, p: any) => a + p.amount, 0);
+  // Alone in the group, nobody owes anybody, so the owner can delete it from here.
+  const solo = data.isCreator && data.members.length === 1;
+  const deleteGroup = () => {
+    setBusy(true); setErr("");
+    api(`/api/groups/${id}`, "DELETE").then(() => router.push("/groups")).catch((e) => { setErr(e.message); setBusy(false); });
+  };
   const maps = `https://www.google.com/maps/dir/${plan.stops.map((s: any) => encodeURIComponent(s.address ? `${s.place}, ${s.address}` : s.place)).join("/")}`;
 
   return (
@@ -222,6 +231,15 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         {sent && <Link href="/groups" className="btn-ghost">Back to groups</Link>}
         <RedrawVote id={id} redraw={data.redraw} onChanged={reload} />
         <Link href={`/groups/${id}/finding?new=1`} className="flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo">Find new plans</Link>
+        {solo && (confirmDelete ? (
+          <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
+            <p className="text-[15px] font-bold">Delete {data.group.name}? You're the only member, so this removes the group and its plans.</p>
+            <button type="button" disabled={busy} onClick={deleteGroup} className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-maroon px-4 py-3 text-base font-bold text-surface disabled:opacity-60">Delete group</button>
+            <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)} className="btn-ghost">Cancel</button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setConfirmDelete(true)} className="btn-ghost text-maroon">Delete group</button>
+        ))}
       </div>
       <p className="mt-3 text-center text-xs text-muted">Demo bank (Nessie sandbox). No real money moves.</p>
     </Page></div>

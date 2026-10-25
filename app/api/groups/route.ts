@@ -14,8 +14,8 @@ export async function GET() {
   if (typeof uid !== "number") return uid;
 
   // Settle the authoritative round before deriving labels and CTAs.
-  const rounds = await q<{ id: number }>(
-    `select r.id
+  const rounds = await q<{ id: number; group_id: number }>(
+    `select r.id, g.id group_id
      from groups g
      join memberships m on m.group_id=g.id
      join lateral (
@@ -26,7 +26,13 @@ export async function GET() {
      where m.user_id=$1 and r.status='voting'`,
     [uid],
   );
-  await Promise.all(rounds.map((r) => settleRound(r.id)));
+  await Promise.all(rounds.map(async (r) => {
+    try {
+      await settleRound(r.id);
+    } catch (error) {
+      console.error(`Failed to settle round ${r.id} for group ${r.group_id}`, error);
+    }
+  }));
 
   const rows = await q<any>(
     `select g.id, g.name, g.city,

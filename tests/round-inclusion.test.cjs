@@ -10,8 +10,11 @@ function load(file, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText, { exports, process: { env: {} }, require(name) {
     if (name in mocks) return mocks[name];
-    if (name === './voting') return {};
-    if (name === './votingRules' || name === '@/lib/votingRules') return load('lib/votingRules.ts');
+      if (name === './voting' || name === '@/lib/voting') return load('lib/voting.ts', {
+        '@/lib/db': mocks['./db'] ?? mocks['@/lib/db'],
+        './roundParticipation': load('lib/roundParticipation.ts'),
+      });
+      if (name === './votingRules' || name === '@/lib/votingRules') return load('lib/votingRules.ts', {});
     throw Error(`Unexpected import ${name}`);
   } });
   return exports;
@@ -140,8 +143,10 @@ test('winner tallies and confirmation-based closing apply the same inclusion pre
       sqlSeen.push(sql);
       if (sql.startsWith('select status')) return { status: 'final' };
       if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
-      assert.ok(sql.includes(inclusion.includedVoteSql()), 'member total must be restricted');
-      return { id: 10, status: 'voting', group_id: 5, expired: false, members: 1 };
+      // One included voter, one plan, one vote: excluded members must not keep it open.
+      assert.ok(sql.includes(inclusion.includedVoteSql()), 'member and ballot totals must be restricted');
+      assert.equal(sql.split(inclusion.includedVoteSql()).length - 1, 1);
+      return { id: 10, status: 'voting', group_id: 5, expired: false, plans: 1, members: 1, votes: 1 };
     },
     q: async sql => {
       sqlSeen.push(sql);
@@ -161,7 +166,8 @@ test('winner tallies and confirmation-based closing apply the same inclusion pre
   const pipeline = load('lib/pipeline.ts', {
     './voting': voting,
     './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
-    './db': db, './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './split': {},
+    './db': db,
+    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './gemini': {}, './split': {},
   });
   assert.equal(await pipeline.settleRound(10), 'final');
   assert.ok(sqlSeen.some(sql => sql.startsWith("update plan_rounds set status='final'")));

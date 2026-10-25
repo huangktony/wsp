@@ -22,10 +22,10 @@ export function InviteCodeInput({ value, onChange, onSubmit, describedBy, classN
     onChange(result.code, result.complete);
   };
   return <div onClick={() => input.current?.focus()}
-    className={`flex h-[54px] items-center rounded-2xl border-2 border-[#6F98A2] bg-white px-4 text-base text-[#28536B] focus-within:border-[#28536B] focus-within:ring-2 focus-within:ring-[#28536B] focus-within:ring-offset-2 ${className}`}>
+    className={`flex h-[54px] items-center rounded-2xl border-2 border-outline bg-surface px-4 text-base text-indigo focus-within:border-indigo focus-within:ring-2 focus-within:ring-indigo focus-within:ring-offset-2 focus-within:ring-offset-surface ${className}`}>
     <span aria-hidden="true" className="select-none font-bold tracking-[1px]">{lead}</span>
     <input ref={input} type="text" aria-label={`Invite code, after ${spec.prefix} dash`} aria-describedby={describedBy}
-      className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-[inherit] text-base text-[#28536B] outline-none placeholder:text-[#35607A]/80 focus:ring-0"
+      className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-[inherit] text-base text-indigo outline-none placeholder:text-secondary/80 focus:ring-0"
       placeholder={"X".repeat(spec.min)} maxLength={spec.max} inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="off"
       value={suffix} onChange={event => update(event.currentTarget.value)}
       onPaste={event => { event.preventDefault(); update(event.clipboardData.getData("text"), true); }}

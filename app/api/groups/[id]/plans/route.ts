@@ -1,6 +1,6 @@
 import { getVotingParticipation } from "@/lib/voting";
 import { q, q1 } from "@/lib/db";
-import { fail, isMember, json, requireUser } from "@/lib/api";
+import { fail, isMember, json, requireUser, setupDone } from "@/lib/api";
 import { NoPlacesError, computeSplit, fillRound, settleRound, startRound, withStopCosts } from "@/lib/pipeline";
 
 export const maxDuration = 60;
@@ -12,6 +12,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   if (typeof uid !== "number") return uid;
   const id = Number((await params).id);
   if (!(await isMember(id, uid))) return fail("not in this group", 403);
+  if (!(await setupDone(id, uid))) return fail("finish your setup first", 409);
   const r = await startRound(id);
   if (!r.created) return json({ roundId: r.roundId, status: r.status });
   try {
@@ -61,7 +62,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   let split = null, payments: any[] = [];
   if (round.status === "final") {
     split = await computeSplit(round.id);
-    payments = await q<any>("select p.id,p.user_id,u.name,p.amount::float amount,p.status from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id", [round.id]);
+    payments = await q<any>("select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id", [round.id]);
   }
   return json({ ...base, round, plans, members, memberCount, voted, roundOpen, split, payments, isPayer: round.payer_id === uid });
 }

@@ -147,6 +147,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/font/google': { Inter: () => ({ className: '' }) },
     react: { ...h.react, use: p => p, useMemo: fn => fn() },
     'react/jsx-runtime': require('react/jsx-runtime'),
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
@@ -214,6 +215,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push() {} }) },
     '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },
   }).default;

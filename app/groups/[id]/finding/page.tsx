@@ -1,4 +1,5 @@
 "use client";
+import { useSetupGate } from "@/lib/useSetupGate";
 import Link from "next/link";
 import { Inter } from "next/font/google";
 import { use, useEffect, useState } from "react";
@@ -12,6 +13,7 @@ const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 export default function Finding({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  useSetupGate(id);
   const [group, setGroup] = useState<FindingGroup | null>(null);
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<"checking" | "running" | "ready" | "error">("checking");

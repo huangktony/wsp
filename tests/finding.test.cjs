@@ -141,7 +141,7 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
   let fills = 0, created = true;
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
     '@/lib/db': {}, '@/lib/voting': {},
-    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, json: value => value },
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, setupDone: async () => true, json: value => value },
     '@/lib/pipeline': {
       startRound: async () => { const owner = created; created = false; return { roundId: 10, status: 'generating', created: owner }; },
       fillRound: async () => { fills++; },
@@ -163,6 +163,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ replace() { throw Error('Must not navigate on failure'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, callbacks) => {
@@ -201,6 +202,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
       useEffect: fn => effects.push(fn),
     },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': { useRouter: () => ({ push: url => navigation.push(url), replace() { throw Error('No automatic navigation'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
     '@/lib/findingFlow': { runFinding: (id, fresh, signal, handlers) => { callbacks = handlers; return Promise.resolve(); } },
@@ -252,6 +254,7 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
         useEffect: fn => effects.push(fn),
       },
       'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
+      '@/lib/useSetupGate': { useSetupGate() {} },
       'next/navigation': { useRouter: () => ({ push() { throw Error('Unexpected navigation'); } }) },
       'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
       '@/lib/findingFlow': { runFinding: () => { realRuns++; return Promise.resolve(); } },

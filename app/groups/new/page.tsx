@@ -21,7 +21,7 @@ export default function NewGroup() {
     setBusy(true);
     setErr("");
     return p.then((d) => {
-      r.push(`/groups/${d.id}`);
+      r.push(source === "create" ? `/groups/${d.id}/setup` : `/groups/${d.id}`);
     }).catch((e) => {
       setErr(e.message);
       setBusy(false);

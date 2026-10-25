@@ -79,3 +79,8 @@ create table if not exists stop_skips (
 alter table payments add column if not exists transfer_id text;
 -- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
 alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));
+-- When money moved, so the Spending screen can list it, and when the payer last nudged someone who hasn't paid back.
+alter table payments add column if not exists paid_at timestamptz;
+alter table payments add column if not exists reminded_at timestamptz;
+alter table plan_rounds add column if not exists requests_sent_at timestamptz;
+alter table plan_rounds add column if not exists bill_total numeric;

@@ -2,7 +2,6 @@ import { pool, q, q1 } from "./db";
 import { groupTier } from "./tier";
 import { categoriesFor, findPlaces, type Place } from "./serpapi";
 import { planLevel } from "./price";
-import type { Tier } from "./tiers";
 import { generatePlans } from "./gemini";
 
 /*
@@ -82,7 +81,7 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       const stops = enrichStops(d.stops, d.est_cost_per_person, byName);
       // One definition: the cost is the sum of the stop costs, the level is the most expensive stop.
       const total = stops.reduce((s, x) => s + x.cost, 0);
-      const price = planLevel(stops, tier as Tier);
+      const price = planLevel(stops);
       const why = free < basis.length ? `${d.why_fits} ${free} of ${basis.length} are free ${slot}.` : d.why_fits;
       await q("insert into plans(round_id,title,summary,stops,est_cost_per_person,price_level,why_fits) values($1,$2,$3,$4,$5,$6,$7)",
         [roundId, d.title, d.summary, JSON.stringify(stops), total, price, why]);

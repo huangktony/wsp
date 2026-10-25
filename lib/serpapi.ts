@@ -59,19 +59,29 @@ export function categoriesFor(interests: string[]): string[] {
 
 export type SearchFn = (cat: string, tier: Tier, lat: number, lng: number) => Promise<Place[]>;
 
+/** Never let the API key reach a log line. */
+function maskKey(text: string): string {
+  const k = process.env.SERPAPI_KEY;
+  const t = k ? text.split(k).join("***") : text;
+  return t.replace(/api_key=[^&\s"]*/g, "api_key=***");
+}
+
 const search: SearchFn = async (cat, tier, lat, lng) => {
   const q = queryFor(cat, tier);
-  if (process.env.USE_MOCKS === "true" || !process.env.SERPAPI_KEY || !q) return MOCK[cat] ?? [];
+  if (process.env.USE_MOCKS === "true" || !q) return MOCK[cat] ?? [];
+  // Mock places keep the demo alive when the real search is unavailable, but every fallback is logged so the log shows which places are real.
+  const fallback = (why: string) => { console.error(maskKey(`serpapi: using MOCK places for "${cat}" (${why})`)); return MOCK[cat] ?? []; };
+  if (!process.env.SERPAPI_KEY) return fallback("no SERPAPI_KEY");
   try {
     const u = new URL("https://serpapi.com/search.json");
     u.search = new URLSearchParams({ engine: "google_maps", q, ll: `@${lat},${lng},14z`, type: "search", api_key: process.env.SERPAPI_KEY }).toString();
     const res = await fetch(u, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(String(res.status));
+    if (!res.ok) return fallback(`http ${res.status}`);
     const data = await res.json();
     const out: Place[] = (data.local_results ?? []).slice(0, 6).map((r: any) => placeFromResult(r, cat, tier));
-    return out.length ? out : MOCK[cat] ?? [];
-  } catch {
-    return MOCK[cat] ?? [];
+    return out.length ? out : fallback("empty result");
+  } catch (e: any) {
+    return fallback(`error: ${e?.cause?.code ?? e?.message ?? e}`);
   }
 };
 

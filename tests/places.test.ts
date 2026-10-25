@@ -114,7 +114,6 @@ test("a free stop costs 0 and counts toward the sum", () => {
 test("planLevel is the most expensive stop, and unknown stops use the fallback", () => {
   assert.equal(planLevel([{ price: "$" }, { price: "$$" }]), "$$");
   assert.equal(planLevel([{ price: "$$$" }, { price: "$" }]), "$$$");
-  assert.equal(planLevel([{ price: "$" }, {}], "$$"), "$$");
   assert.equal(planLevel([]), "$");
 });
 
@@ -140,4 +139,11 @@ test("withinBudget rejects unknown places and over-budget stops", () => {
   assert.equal(withinBudget(draft("taco spot"), MIX, "$"), true); // case-insensitive
   assert.equal(withinBudget(draft("Fancy Grill"), MIX, "$"), false);
   assert.equal(withinBudget(draft("Made Up Place"), MIX, "$$$"), false);
+});
+
+test("a plan with an unpriced stop is never labeled $ (unknown counts as the most expensive)", () => {
+  assert.equal(planLevel([{ price: "$" }, {}]), "$$$");
+  assert.equal(planLevel([{ price: "$" }, { price: undefined }]), "$$$");
+  assert.equal(planLevel([{}]), "$$$");
+  assert.notEqual(planLevel([{ price: "$" }, { price: "" }]), "$");
 });

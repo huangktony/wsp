@@ -44,9 +44,11 @@ export function estimatePlace(input: { queryTier: Tier; types: string[]; realPri
   return { price: input.queryTier, cost: estCost(input.queryTier), estimated: true };
 }
 
-/** A plan's level is the price of its most expensive stop. Unknown stops count as `fallback`. */
-export function planLevel(stops: { price?: string }[], fallback: Tier = "$"): Tier {
-  const ranks = stops.map((s) => (s.price ? rank(s.price) : rank(fallback)));
-  const top = Math.max(1, ...ranks);
+/**
+ * A plan's level is the price of its most expensive stop. A stop with no known price counts as the most expensive ("$$$"),
+ * never the cheapest, so an unpriced stop can never make a plan look like it fits a small budget.
+ */
+export function planLevel(stops: { price?: string }[]): Tier {
+  const top = Math.max(1, ...stops.map((s) => (s.price ? rank(s.price) : 3)));
   return (top >= 3 ? "$$$" : top === 2 ? "$$" : "$") as Tier;
 }

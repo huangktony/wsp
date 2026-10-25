@@ -89,7 +89,7 @@ export default function Profile() {
 
   if (!data) return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
+      <div className={`${inter.className} px-6 pt-6 text-indigo`}>
         {error ? <p role="alert" className="text-sm font-semibold text-maroon">{error}</p> : (
           <Skeleton>
             <SkeletonBlock className="mb-4 h-9 w-1/2" />
@@ -122,7 +122,7 @@ export default function Profile() {
 
   return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface px-6 pt-6 text-indigo`}>
+      <div className={`${inter.className} px-6 pt-6 text-indigo`}>
         <header className="mb-5 flex items-center justify-between">
           <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Profile</h1>
           <Link href="/settings" aria-label="Settings" className={icon}>

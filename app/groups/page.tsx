@@ -54,7 +54,7 @@ function GroupsContent() {
   const featured = other[0];
   return (
     <Page variant="plain">
-      <div className={`${inter.className} bg-surface text-indigo`}>
+      <div className={`${inter.className} text-indigo`}>
         <header className="flex items-center justify-between px-6 pb-3 pt-6">
           {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }}>
             <div className="relative min-w-0 flex-1">
@@ -77,11 +77,11 @@ function GroupsContent() {
         <p className="sr-only" aria-live="polite" aria-atomic="true">{data && !error ? `${results?.length ?? 0} groups found` : ""}</p>
         {open.length > 0 && <h2 className="mb-1 flex items-center gap-2 px-6 font-[inherit] text-sm font-bold text-[#35607A]">
           Current votes
-          <span className="rounded-full bg-[#CBE6C7] px-2 py-0.5 text-xs font-extrabold text-[#28536B]">{open.length}</span>
+          <span className="rounded-full bg-pistachio px-2 py-0.5 text-xs font-extrabold text-indigo">{open.length}</span>
         </h2>}
         <section aria-label="Current votes" className={`flex snap-x snap-mandatory gap-4 scroll-px-6 overflow-x-auto px-6 pb-4 ${open.length ? "" : "pt-1.5"} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
           <Link href="/groups/new" className={`flex w-16 shrink-0 flex-col items-center gap-1.5 snap-start rounded-xl text-xs font-bold ${focus}`}>
-            <span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-[#6F98A2]">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-[#6F98A2] bg-circle">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             </span>
             New

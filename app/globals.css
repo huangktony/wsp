@@ -15,7 +15,12 @@
   --peach: #ffc49b;
   --wine: #8a1f47;
   --field: #6f98a2;
-  --bg: #ffffff;
+  --bg: #fbf8f1; /* very light tan behind pages; cards, inputs and the nav bar stay white (--surface) */
+  --page: #fbf8f1;
+  --nav: #ffffff;
+  --circle: #ffffff; /* fill for the dashed "New" circle */
+  --confetti-mint: #cbe6c7;
+  --confetti-sage: #8fb78f;
   --surface: #ffffff;
   --panel: var(--ink); /* dark cards with white text */
   --panel-soft: #cbe6c7; /* accent text on --panel */
@@ -54,17 +59,18 @@
   --ink: #e3eef2;
   --muted: #a3bcc8;
   --border: #2b404b;
-  --mint: #26402c;
-  --sage: #4d8255;
-  --sage-ink: #e8f5e5;
+  --mint: #694656;
+  --sage: #9c657a;
+  --sage-ink: #ffffff;
   --wine: #f29bbb;
   --field: #4a6873;
   --bg: #0f1b22;
+  --page: #172832; /* dark pages stay the same as --surface */
   --surface: #172832;
   --panel: #1f4357;
   --logo-ink: #28536b;
-  --matcha: #3e6644;
-  --pistachio: #22392a;
+  --matcha: #9c657a;
+  --pistachio: #694656;
   --azure: #2b444d;
   --indigo: #b9d6e4;
   --orchid: #6a2c44;
@@ -72,11 +78,15 @@
   --secondary: #a3bcc8;
   --maroon: #f29bbb;
   --orchid-ink: #fbd0de;
-  --matcha-ink: #d5ecd1;
+  --matcha-ink: #ffffff;
   --inactive: #6f8e99;
   --outline: #4a6873;
   --pink-soft: #4a2633;
-  --mint-soft: #1f3326;
+  --mint-soft: #42303a;
+  --circle: #2b444d;
+  --nav: #111f27; /* a touch darker than --surface */
+  --confetti-mint: #d3a9b8; /* background confetti: green turns musty pink */
+  --confetti-sage: #b57d92;
   color-scheme: dark;
 }
 
@@ -101,3 +111,172 @@ h1, h2, h3 { font-family: var(--font-display); }
 .range-wsp::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -9px; border-radius: 9999px; background: var(--orchid); border: 3px solid var(--surface); box-shadow: 0 0 0 1.5px var(--outline); }
 .range-wsp::-moz-range-thumb { width: 22px; height: 22px; border-radius: 9999px; background: var(--orchid); border: 3px solid var(--surface); box-shadow: 0 0 0 1.5px var(--outline); }
 .range-wsp:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 9999px; }
+
+/* Phone frame preview on laptop/desktop only; real phones get the full-screen app. */
+@media (min-width: 640px) {
+  body { display: flex; min-height: 100vh; align-items: center; justify-content: center; background: #dfe8eb; }
+  :root[data-theme="dark"] body { background: #070d11; }
+  .phone {
+    position: relative;
+    width: 414px;                          /* 390px screen + 12px bezel each side */
+    height: min(868px, calc(100vh - 32px));
+    border: 12px solid #111;
+    border-radius: 56px;
+    overflow: hidden;
+    background: var(--bg);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+    transform: translateZ(0);              /* pins position:fixed children (tab bar) to the frame */
+  }
+  .phone::before {                         /* dynamic island */
+    content: ""; position: absolute; top: 10px; left: 50%; z-index: 50;
+    width: 110px; height: 30px; margin-left: -55px; border-radius: 20px; background: #111;
+  }
+  .phone-screen {
+    height: 100%; min-height: 0; max-width: none;
+    padding-top: 44px;                     /* status bar area so content clears the island */
+    overflow-y: auto; scrollbar-width: none;
+  }
+  .phone-screen::-webkit-scrollbar { display: none; }
+  .phone-screen .min-h-screen, .phone-screen .min-h-\[100svh\] { min-height: 100%; }
+}
+
+/* ---------- Splash screen: "Friends arrive" on the "Confetti" background (components/Splash.tsx) ---------- */
+.wsp-splash {
+  --D: 2.6s;                         /* animation length; keep in sync with DURATION in Splash.tsx */
+  --fs: min(27vw, 118px);            /* wordmark size; everything else scales from it */
+  --ball: calc(var(--fs) * .65);     /* smiley and friend size */
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(var(--fs) * .19);
+  background: radial-gradient(120% 70% at 50% 47%, #9cc49b 0%, #8fb78f 55%, #80ab82 100%);
+  color: #28536b; overflow: hidden; cursor: pointer;
+  transition: opacity 450ms ease;
+}
+.wsp-splash.leave { opacity: 0; pointer-events: none; }
+html.wsp-splash-skip .wsp-splash { display: none; }
+.wsp-splash:not(.play) .wsp-splash-word, .wsp-splash:not(.play) .wsp-splash-tag, .wsp-splash:not(.play) .cf { visibility: hidden; }
+.wsp-splash-bg { position: absolute; inset: 0; pointer-events: none; }
+.wsp-splash-bg svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wsp-splash-word, .wsp-splash-tag { position: relative; z-index: 1; }
+.wsp-splash-word {
+  display: flex; align-items: baseline;
+  font-family: var(--font-brand); font-weight: 800; font-size: var(--fs); line-height: 1; letter-spacing: -.05em;
+  padding-right: calc(var(--ball) + .054em);
+}
+.wsp-splash .l { display: inline-block; transform-origin: 50% 85%; }
+.wsp-splash .base { display: inline-block; width: 0; height: 0; }
+.wsp-splash-tag { font-family: var(--font-brand); font-weight: 700; font-size: calc(var(--fs) * .216); color: #1b3a1e; }
+.wsp-splash .ball-x {
+  position: absolute; left: 0; bottom: var(--base, .19em); z-index: 2;
+  width: var(--ball); height: var(--ball);
+  transform: translateX(var(--xend, 2em));
+}
+.wsp-splash .ball-y, .wsp-splash .ball-sq { display: block; width: 100%; height: 100%; }
+.wsp-splash .ball-sq { transform-origin: 50% 100%; }
+.wsp-splash .ball-sq svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wsp-splash .eyes, .wsp-splash .cf { transform-box: fill-box; transform-origin: center; }
+/* the two friends: mint lands on "w", peach lands on "s" */
+.wsp-splash .friend {
+  position: absolute; left: 0; bottom: var(--base, .19em); z-index: 1;
+  width: var(--ball); height: var(--ball); border-radius: 50%;
+  transform-origin: 50% 100%; transform: scale(0);
+}
+.wsp-splash .fa { background: #cbe6c7; }
+.wsp-splash .fb { background: #ffc49b; }
+
+.wsp-splash.play .fa { animation: wsp-friend-a var(--D) both; }
+.wsp-splash.play .fb { animation: wsp-friend-b var(--D) both; }
+.wsp-splash.play .ball-x { animation: wsp-ball-x var(--D) both; }
+.wsp-splash.play .ball-y { animation: wsp-ball-y var(--D) both; }
+.wsp-splash.play .ball-sq { animation: wsp-squash var(--D) linear both; }
+.wsp-splash.play .l { animation: wsp-rise calc(var(--D) * .2) cubic-bezier(.3, .7, .4, 1) both; }
+.wsp-splash.play .l1 { animation-delay: calc(var(--D) * .47); }
+.wsp-splash.play .l2 { animation-delay: calc(var(--D) * .52); }
+.wsp-splash.play .l3 { animation-delay: calc(var(--D) * .6); }
+.wsp-splash.play .eyes { animation: wsp-blink var(--D) linear both; }
+.wsp-splash.play .wsp-splash-tag { animation: wsp-tagin var(--D) ease-out both; }
+.wsp-splash.play .cf {
+  animation: wsp-pop .5s cubic-bezier(.3, 1.5, .5, 1) both, wsp-drift 6s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i) * 70ms), calc(var(--i) * -.8s);
+}
+
+/* mint friend: drops onto "w", bounces once, then pops away as "w" springs up */
+@keyframes wsp-friend-a {
+  0% { transform: translate(var(--x1), -5.7em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  14% { transform: translate(var(--x1), 0) scale(1.28, .72); animation-timing-function: cubic-bezier(.1, .55, .6, 1); }
+  18% { transform: translate(var(--x1), -.4em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  22% { transform: translate(var(--x1), 0) scale(1.1, .9); }
+  25%, 45% { transform: translate(var(--x1), 0); animation-timing-function: cubic-bezier(.5, 0, .7, .4); }
+  50%, 100% { transform: translate(var(--x1), 0) scale(0); }
+}
+/* peach friend: same, a beat later, onto "s" */
+@keyframes wsp-friend-b {
+  0%, 8% { transform: translate(var(--x2), -5.7em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  22% { transform: translate(var(--x2), 0) scale(1.28, .72); animation-timing-function: cubic-bezier(.1, .55, .6, 1); }
+  26% { transform: translate(var(--x2), -.4em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  30% { transform: translate(var(--x2), 0) scale(1.1, .9); }
+  33%, 50% { transform: translate(var(--x2), 0); animation-timing-function: cubic-bezier(.5, 0, .7, .4); }
+  55%, 100% { transform: translate(var(--x2), 0) scale(0); }
+}
+/* smiley: lands on "p", then hops sideways to sit just right of it */
+@keyframes wsp-ball-x {
+  0%, 58% { transform: translateX(var(--x3)); }
+  70%, 100% { transform: translateX(var(--xend)); }
+}
+@keyframes wsp-ball-y {
+  0%, 16% { transform: translateY(-5.7em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  30% { transform: translateY(0); animation-timing-function: cubic-bezier(.1, .55, .6, 1); }
+  34% { transform: translateY(-.4em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  38%, 58% { transform: translateY(0); animation-timing-function: cubic-bezier(.1, .55, .6, 1); }
+  64% { transform: translateY(-.86em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  70% { transform: translateY(0); animation-timing-function: cubic-bezier(.1, .55, .6, 1); }
+  74% { transform: translateY(-.135em); animation-timing-function: cubic-bezier(.4, 0, .9, .45); }
+  78%, 100% { transform: translateY(0); }
+}
+@keyframes wsp-squash {
+  0%, 29.4% { transform: none; }
+  30.6% { transform: scale(1.28, .72); }
+  33%, 37.4% { transform: none; }
+  38.6% { transform: scale(1.1, .9); }
+  40%, 69.4% { transform: none; }
+  70.6% { transform: scale(1.18, .82); }
+  73%, 100% { transform: none; }
+}
+@keyframes wsp-rise {
+  0% { opacity: 0; transform: scale(.3, 0); }
+  1% { opacity: 1; }
+  55% { transform: scale(1.06, 1.14); }
+  78% { transform: scale(.98, .95); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes wsp-blink { 0%, 84%, 92%, 100% { transform: scaleY(1); } 88% { transform: scaleY(.12); } }
+@keyframes wsp-tagin { 0%, 76% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: none; } }
+@keyframes wsp-pop { 0% { transform: scale(0) rotate(-30deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes wsp-drift { 0% { translate: 0 0; } 100% { translate: 0 -7px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wsp-splash { transition: none; }
+  .wsp-splash.play *, .wsp-splash.play .wsp-splash-tag { animation: none !important; }
+}
+
+/* Confetti behind every screen (same art as the splash, static and faint). It paints the page color itself, so page wrappers are transparent. */
+.app-confetti { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--page); overflow: hidden; }
+.app-confetti svg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .25; }
+.app-confetti .roam { animation: wsp-roam var(--t) ease-in-out var(--o) infinite; }
+@keyframes wsp-roam {
+  0%, 100% { translate: 0 0; }
+  25% { translate: var(--dx) calc(var(--dy) * .3); }
+  50% { translate: calc(var(--dx) * .3) var(--dy); }
+  75% { translate: calc(var(--dx) * -.7) calc(var(--dy) * .4); }
+}
+@media (prefers-reduced-motion: reduce) { .app-confetti .roam { animation: none; } }
+
+/* Finding-plans screen: the splash's animated confetti, behind the blue top part only (the white sheet is opaque and sits above it). */
+.finding-confetti { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; opacity: .6; }
+.finding-confetti svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.finding-confetti .cf {
+  transform-box: fill-box; transform-origin: center;
+  animation: wsp-pop .5s cubic-bezier(.3, 1.5, .5, 1) both, wsp-drift 6s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i) * 70ms), calc(var(--i) * -.8s);
+}
+@media (prefers-reduced-motion: reduce) { .finding-confetti .cf { animation: none; } }

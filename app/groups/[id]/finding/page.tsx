@@ -6,6 +6,7 @@ import { Inter } from "next/font/google";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Smiley } from "@/components/Smiley";
+import { Confetti } from "@/components/Splash";
 import { runFinding, type FindingGroup } from "@/lib/findingFlow";
 
 const inter = Inter({ subsets: ["latin"], weight: ["600", "700", "800"] });
@@ -84,7 +85,8 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
   ];
   const running = phase === "running";
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col bg-indigo text-white [--indigo:#28536B] [--pistachio:#CBE6C7] [--matcha:#8FB78F] [--orchid:#F3A5BC] [--pink:#F3A5BC] [--logo-ink:#28536B] [--azure:#B4CCCF] [--secondary:#35607A] [--matcha-ink:#1B3A1E] [--maroon:#8A1F47]`}>
+    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] relative isolate w-full max-w-[390px] flex-col bg-indigo text-white [--indigo:#28536B] [--pistachio:#CBE6C7] [--matcha:#8FB78F] [--orchid:#F3A5BC] [--pink:#F3A5BC] [--logo-ink:#28536B] [--azure:#B4CCCF] [--secondary:#35607A] [--matcha-ink:#1B3A1E] [--maroon:#8A1F47]`}>
+      <div aria-hidden="true" className="finding-confetti"><Confetti /></div>
       <div className="px-6 pt-14 sm:pt-6">
         <Link href={groupHref({ id, round: group?.finding.round })} aria-label="Back" className={`flex h-11 w-11 items-center justify-center rounded-full bg-white text-indigo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white`}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>

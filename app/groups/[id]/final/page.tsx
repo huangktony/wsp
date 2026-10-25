@@ -5,6 +5,7 @@ import { use, useState } from "react";
 import { Page, Err } from "@/components/Page";
 import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
+import { splitAmounts, type SplitMode } from "@/lib/split";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
 const typography = `${inter.className} [&>main>a:first-child]:text-[15px] [&>main>a:first-child]:text-secondary`;
@@ -28,11 +29,20 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 4000);
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  // The change being saved, shown right away instead of waiting for the server and the reload.
+  const [draft, setDraft] = useState<{ mode?: SplitMode; skips?: number[] } | null>(null);
   const plan = data?.plans?.find((p: any) => p.id === data.round?.winner_plan_id);
   if (!data || !plan || !data.split) return <div className={typography}><Page back={`/groups/${id}`}>{error || (data && data.round?.status !== "final" ? "No final plan yet." : "Loading…")}</Page></div>;
 
-  const { round, split, payments } = data;
-  const act = (body: any) => { setBusy(true); setErr(""); return api(`/api/groups/${id}/split`, "POST", body).then(reload).catch((e) => setErr(e.message)).finally(() => setBusy(false)); };
+  const { round, payments } = data;
+  const split = draft
+    ? { ...data.split, mode: draft.mode ?? data.split.mode, ...splitAmounts(plan.stops.map((s: any) => s.cost),
+        data.split.rows.map((x: any) => (x.user_id === data.me && draft.skips ? { ...x, skips: draft.skips } : x)), draft.mode ?? data.split.mode) }
+    : data.split;
+  const act = (body: any, next: typeof draft) => {
+    setBusy(true); setErr(""); setDraft(next);
+    return api(`/api/groups/${id}/split`, "POST", body).then(reload).catch((e) => setErr(e.message)).finally(() => { setDraft(null); setBusy(false); });
+  };
   const me = split.rows.find((x: any) => x.user_id === data.me);
   const payer = split.rows.find((x: any) => x.user_id === split.payerId);
   const others = split.rows.filter((x: any) => x.user_id !== split.payerId && x.amount > 0);
@@ -74,7 +84,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
                 <p className="text-sm font-semibold text-secondary">~${Number.isInteger(s.cost) ? s.cost : Number(s.cost).toFixed(2)} each</p>
                 {!sent && plan.stops.length > 1 && (
                   <label className="mt-1 flex items-center gap-2 text-sm text-muted">
-                    <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked })} />
+                    <input type="checkbox" className="h-4 w-4" checked={!!skipping} disabled={busy} onChange={(e) => act({ action: "skip", stop: i, skip: e.target.checked }, { skips: e.target.checked ? [...me.skips, i] : me.skips.filter((k: number) => k !== i) })} />
                     I'll skip this stop
                   </label>
                 )}
@@ -96,10 +106,12 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       </section>
 
       {!sent && (
-        <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl bg-mintsoft p-1">
+        <div role="group" aria-label="Split method" className="my-3 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-mintsoft p-1">
           {([["even", "Split evenly"], ["items", "By item"]] as const).map(([m, label]) => (
-            <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => act({ action: "mode", mode: m })}
-              className={`h-11 rounded-xl text-[15px] font-bold ${split.mode === m ? "bg-surface shadow" : ""} ${!data.isPayer ? "cursor-default" : ""}`}>{label}</button>
+            <button key={m} aria-pressed={split.mode === m} disabled={!data.isPayer || busy} onClick={() => split.mode !== m && act({ action: "mode", mode: m }, { mode: m })}
+              className={`h-11 rounded-xl text-[15px] font-bold transition-colors ${split.mode === m ? "bg-sage text-sageink shadow-md" : "text-muted"} ${!data.isPayer ? "cursor-default" : ""}`}>
+              {split.mode === m && <span aria-hidden>✓ </span>}{label}
+            </button>
           ))}
         </div>
       )}
@@ -129,7 +141,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
       <Err msg={err} />
       <div className="mt-5 space-y-3">
         {!sent && data.isPayer && (
-          <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" })}>
+          <button className="btn text-[17px] font-bold" disabled={busy || !others.length} onClick={() => act({ action: "send" }, null)}>
             Send {others.length} {others.length === 1 ? "request" : "requests"} via Nessie
           </button>
         )}

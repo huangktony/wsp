@@ -41,7 +41,7 @@ function GroupsContent() {
     setSearchOpen(false);
     updateQuery("");
   };
-  const { data, error } = useApi<any[]>("/api/groups");
+  const { data, error } = useApi<any[]>("/api/groups", 5000);
   const term = query.trim().toLowerCase();
   const results = data?.map((group, index) => ({ group, index })).filter(({ group }) =>
     !term || [group.name, group.city, group.status].some((value) => typeof value === "string" && value.toLowerCase().includes(term))

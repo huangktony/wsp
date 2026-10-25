@@ -55,9 +55,9 @@ export function ScopePicker({ value, onChange, tall = false }: { value: TripScop
 export function DiscoverySummaryNote({ summary, demo = false, options }: { summary?: DiscoverySummary | null; demo?: boolean; options?: Option[] }) {
   if (!summary) return null;
   const closest = summary.qualifiedCount === 0 && summary.returnedCount > 0;
-  const text = closest ? 'Nothing fits everyone’s budget. Closest options:' : summary.returnedCount === 0 ? 'No destination fits everyone’s budget yet.' : `${summary.qualifiedCount} of ${summary.searchedCount} destinations fit everyone’s budget.`;
+  const text = closest ? 'Nothing fits everyone’s budget. Here are the closest options.' : summary.returnedCount === 0 ? 'No destination fits everyone’s budget yet.' : `${summary.qualifiedCount} of ${summary.searchedCount} destinations fit everyone’s budget.`;
   const allOver = !!options?.length && options.every(o => o.fits === false);
-  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-sm text-secondary">{demo ? 'Sample: ' : ''}{text}{allOver && <span className="mt-1 block">Anyone can veto. Try a smaller scope or a higher limit.</span>}</p>;
+  return <div role="status" className="space-y-1 rounded-2xl bg-pistachio p-4 text-sm text-secondary"><p>{demo ? 'Sample: ' : ''}{text}</p>{allOver && <p>Anyone can veto. Try a smaller scope or a higher limit.</p>}</div>;
 }
 export function TravelNotice() {
   return <p className="rounded-2xl border border-dashed border-outline p-4 text-xs leading-relaxed text-secondary">Fare estimates only. Budget checks use the Nessie sandbox. We never book or move money.</p>;

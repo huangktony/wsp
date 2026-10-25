@@ -74,10 +74,12 @@ test('dates in another year show the year, in the current year they do not',()=>
 test('closest options: the summary line says so, and the veto hint appears only when every option is over budget',()=>{
   const closest={searchedCount:6,qualifiedCount:0,returnedCount:3};
   const over=[option({fits:false}),option({id:2,fits:false})];
-  assert.equal(text(ui.DiscoverySummaryNote({summary:closest})),'Nothing fits everyone’s budget. Closest options:','no hint without the options');
-  assert.equal(text(ui.DiscoverySummaryNote({summary:closest,options:over})),'Nothing fits everyone’s budget. Closest options:Anyone can veto. Try a smaller scope or a higher limit.');
+  assert.equal(text(ui.DiscoverySummaryNote({summary:closest})),'Nothing fits everyone’s budget. Here are the closest options.','no hint without the options');
+  assert.equal(text(ui.DiscoverySummaryNote({summary:closest,options:over})),'Nothing fits everyone’s budget. Here are the closest options.Anyone can veto. Try a smaller scope or a higher limit.');
   assert.ok(!/Anyone can veto/.test(text(ui.DiscoverySummaryNote({summary:{searchedCount:6,qualifiedCount:2,returnedCount:2},options:[option(),option({id:2})]}))));
   assert.ok(!/Anyone can veto/.test(text(ui.DiscoverySummaryNote({summary:{searchedCount:6,qualifiedCount:2,returnedCount:2},options:[option(),option({id:2,fits:false})]}))),'a mix never happens, but a fitting option cancels the hint');
+  const paras=nodes(ui.DiscoverySummaryNote({summary:closest,options:over})).filter(n=>n.type==='p').map(text);
+  assert.deepEqual(paras,['Nothing fits everyone’s budget. Here are the closest options.','Anyone can veto. Try a smaller scope or a higher limit.'],'summary and hint are separate paragraphs');
   assert.equal(text(ui.DiscoverySummaryNote({summary:closest,demo:true})).startsWith('Sample: Nothing fits'),true);
 });
 test('a fits:false card has one chip, "Over someone’s budget", and no per-person check lines or cap',()=>{

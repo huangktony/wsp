@@ -79,3 +79,12 @@ create table if not exists stop_skips (
 alter table payments add column if not exists transfer_id text;
 -- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
 alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));
+-- Round search context; also available as a standalone migration in db/migrations/.
+-- Group coordinates remain NOT NULL and are geocoded during creation.
+
+-- Legacy rounds intentionally keep NULL search_city: their true origin is unknown.
+-- Reads fall back to the group city for legacy rounds; new rounds snapshot their search city.
+alter table plan_rounds add column if not exists search_city text;
+alter table plan_rounds add column if not exists search_distance_mi int;
+alter table plan_rounds add column if not exists sample_places boolean;
+alter table plan_rounds add column if not exists search_error text;

@@ -60,7 +60,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
   const tier = details?.round?.group_tier ?? group?.groupTier;
   const rows = [
     ["Shared free time found", details?.slot ?? "Matching times"],
-    ["Places searched nearby", details?.maxDistanceMi == null ? "Checking preferences" : `${details.maxDistanceMi} mi preference`],
+    ["Places searched nearby", details?.maxDistanceMi == null ? "Checking preferences" : `within ${details.maxDistanceMi} mi`],
     ["Filtered to the group budget", tier ? `${tier} and under` : "Checking budget"],
     [planCount ? `Writing ${planCount} ${planCount === 1 ? "plan" : "plans"}` : "Writing plans", "almost there"],
   ];
@@ -82,6 +82,8 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
         <p className="mt-3.5 text-base font-semibold leading-[1.4]">{phase === "ready" ? "Your plans are ready." : "Matching free times, budgets and what everyone is into."}</p>
       </div>
       <section aria-label="Finding progress" className="mt-auto flex flex-col gap-1.5 rounded-t-[32px] bg-white px-6 pb-[30px] pt-6 text-indigo">
+        {details?.city && <p className="text-sm text-secondary">{details.city}</p>}
+        {details?.round?.sample_places && <p className="text-sm font-bold text-maroon">Sample data</p>}
         <ol>
           {rows.map(([label, detail], index) => {
             const done = index < step;

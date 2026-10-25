@@ -53,7 +53,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
       throw Error(`Unexpected query: ${sql}`);
     },
   };
-  const mocks = { '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
+  const mocks = { '@/lib/finding': load('lib/finding.ts', {}), '@/lib/serpapi': { MissingCityError: class extends Error {}, PlaceSearchError: class extends Error {} }, '@/lib/db': db, '@/lib/api': api, '@/lib/pipeline': { settleRound: async () => 'voting', withStopCosts: stops => stops ?? [] } };
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };

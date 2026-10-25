@@ -17,6 +17,9 @@ import { generatePlans } from "./gemini";
 /** Nothing within the group budget was found. The message is shown to the user as is. */
 export class NoPlacesError extends Error {}
 
+/** The latest round is final. Only the group's redraw vote (lib/redraw.ts) can replace it. */
+export class FinalPlanError extends Error {}
+
 /**
  * Claims a new round for the group, or returns the round already in progress.
  * Uses a per-group advisory lock so two members opening "Finding plans" at once make one round, not two.
@@ -29,6 +32,7 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     // A round stuck in generating for 2+ minutes crashed. Mark it failed so a new one can start.
     await c.query("update plan_rounds set status='failed' where group_id=$1 and status='generating' and created_at < now() - interval '2 minutes'", [groupId]);
     const last = (await c.query("select id,status,attempt,excluded from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
+    if (last?.status === "final") throw new FinalPlanError("The plan is final. Ask the group for new plans instead.");
     if (last && (last.status === "generating" || last.status === "voting")) {
       await c.query("commit");
       return { roundId: last.id, status: last.status, created: false };

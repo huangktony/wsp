@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Inter } from "next/font/google";
 import { use, useState } from "react";
 import { Page, Err } from "@/components/Page";
+import { RedrawVote } from "@/components/RedrawVote";
 import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 import { slotDate, slotLabel } from "@/lib/slot";
@@ -162,6 +163,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           </button>
         )}
         {sent && <Link href="/groups" className="btn-ghost">Back to groups</Link>}
+        <RedrawVote id={id} redraw={data.redraw} onChanged={reload} />
       </div>
       <p className="mt-3 text-center text-xs text-muted">Demo only. No real money moves.</p>
     </Page></div>

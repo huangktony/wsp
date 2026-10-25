@@ -57,6 +57,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
+  mocks['@/lib/redraw'] = { redrawStatus: async () => null };
   mocks['@/lib/groups'] = { deleteGroup: async () => ({ ok: true }) };
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
   const post = load('app/api/plans/[id]/vote/route.ts', mocks).POST;
@@ -214,6 +215,7 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     'next/link': { default: 'a' },
     '@/components/BackButton': { BackButton: 'a' },
     '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
+    '@/components/RedrawVote': { RedrawVote: 'redraw' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
     'next/navigation': { useRouter: () => ({ push() {} }) },

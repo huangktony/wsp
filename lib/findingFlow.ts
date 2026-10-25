@@ -17,7 +17,7 @@ export function wait(ms: number, signal: AbortSignal) {
 }
 
 /** The server owns generation. This client only claims once and observes its round. */
-export async function runFinding(id: string, fresh: boolean, signal: AbortSignal, callbacks: {
+export async function runFinding(id: string, signal: AbortSignal, callbacks: {
   update: (group: FindingGroup) => void; started: () => void; ready: () => void;
 }, dependencies = { api, wait, now: Date.now }) {
   const { api: request, wait: pause, now } = dependencies;
@@ -26,7 +26,7 @@ export async function runFinding(id: string, fresh: boolean, signal: AbortSignal
   signal.throwIfAborted();
   callbacks.update(group);
   const round = group.finding.round;
-  if (group.finding.planCount > 0 && (round?.status === "voting" || (round?.status === "final" && !fresh))) {
+  if (group.finding.planCount > 0 && (round?.status === "voting" || round?.status === "final")) {
     callbacks.ready();
     return;
   }

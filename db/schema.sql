@@ -79,3 +79,9 @@ create table if not exists stop_skips (
 alter table payments add column if not exists transfer_id text;
 -- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
 alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));
+-- A member's vote to throw away a FINAL plan and redraw. Counts only while the round is final and the split requests are not sent.
+create table if not exists redraw_votes (
+  round_id int references plan_rounds(id) on delete cascade,
+  user_id int references users(id) on delete cascade,
+  primary key (round_id, user_id)
+);

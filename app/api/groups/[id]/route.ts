@@ -4,6 +4,7 @@ import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 import { groupTier } from "@/lib/tier";
 import { deleteGroup } from "@/lib/groups";
+import { redrawStatus } from "@/lib/redraw";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const members = await q<any>("select u.id,u.name,(jsonb_array_length(m.availability)>0) setup_done from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [id]);
   const round = await q1<any>("select id,status from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [id]);
   const { votedMemberIds, ...participation } = await getVotingParticipation(id, round);
-  return json({ ...g, finding: await getFindingDetails(id), ...participation, members: members.map(member => ({ ...member, has_voted: votedMemberIds.includes(member.id) })), groupTier: await groupTier(id), round, isCreator: g.created_by === uid, me: uid });
+  return json({ ...g, finding: await getFindingDetails(id), ...participation, members: members.map(member => ({ ...member, has_voted: votedMemberIds.includes(member.id) })), groupTier: await groupTier(id), round, redraw: await redrawStatus(id, uid), isCreator: g.created_by === uid, me: uid });
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {

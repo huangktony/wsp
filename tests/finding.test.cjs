@@ -55,19 +55,17 @@ function flowFixture(responses) {
   };
   const { runFinding } = load('lib/findingFlow.ts', { './client': { api() { throw Error('unexpected live call'); } } });
   const callbacks = Object.fromEntries(['update', 'started', 'ready'].map(key => [key, value => events.push([key, value])]));
-  return { calls, events, controller, run: fresh => runFinding('5', !!fresh, controller.signal, callbacks, dependencies) };
+  return { calls, events, controller, run: () => runFinding('5', controller.signal, callbacks, dependencies) };
 }
 
-test('existing plans skip generation and animation immediately; final manual regeneration still works', async () => {
+test('existing plans skip generation and animation immediately, including a final plan (only the group vote can replace it)', async () => {
   for (const status of ['voting', 'final']) {
     const f = flowFixture([group(status, 3)]);
     await f.run();
     assert.equal(f.calls.length, 1);
+    assert.equal(f.calls.filter(x => x[1] === 'POST').length, 0);
     assert.deepEqual(f.events.map(x => x[0]), ['update', 'ready']);
   }
-  const f = flowFixture([group('final', 3), { roundId: 10 }, group('voting', 2)]);
-  await f.run(true);
-  assert.equal(f.calls.filter(x => x[1] === 'POST').length, 1);
 });
 
 test('new generation waits at least 4 seconds, confirms saved plans, stays ready without a navigation timer', async () => {
@@ -140,7 +138,7 @@ test('hidden-tab polling skips requests and visibility resumes fetching', async 
 test('POST only fills the claimed round; concurrent/non-owner requests do not generate', async () => {
   let fills = 0, created = true;
   const { POST } = load('app/api/groups/[id]/plans/route.ts', {
-    '@/lib/db': {}, '@/lib/voting': {},
+    '@/lib/db': {}, '@/lib/voting': {}, '@/lib/redraw': {},
     '@/lib/api': { requireUser: async () => 1, isMember: async () => true, json: value => value },
     '@/lib/pipeline': {
       startRound: async () => { const owner = created; created = false; return { roundId: 10, status: 'generating', created: owner }; },
@@ -151,6 +149,20 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
   const results = await Promise.all([POST({}, params), POST({}, params)]);
   assert.equal(fills, 1);
   assert.equal(results[0].roundId, results[1].roundId);
+});
+
+test('POST find-plans on a FINAL plan is refused with 409: only the group redraw vote can replace it', async () => {
+  class FinalPlanError extends Error {}
+  let fills = 0;
+  const { POST } = load('app/api/groups/[id]/plans/route.ts', {
+    '@/lib/db': {}, '@/lib/voting': {}, '@/lib/redraw': {},
+    '@/lib/api': { requireUser: async () => 1, isMember: async () => true, json: value => value, fail: (error, status) => ({ error, status }) },
+    '@/lib/pipeline': { FinalPlanError, startRound: async () => { throw new FinalPlanError('The plan is final. Ask the group for new plans instead.'); }, fillRound: async () => { fills++; } },
+  });
+  const result = await POST({}, { params: Promise.resolve({ id: '5' }) });
+  assert.equal(result.status, 409);
+  assert.match(result.error, /final/);
+  assert.equal(fills, 0, 'nothing is generated');
 });
 
 test('screen times out at 30 seconds, offers retry, and cancels work on unmount', async () => {
@@ -165,7 +177,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
     'next/navigation': { useRouter: () => ({ replace() { throw Error('Must not navigate on failure'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
-    '@/lib/findingFlow': { runFinding: (id, fresh, signal, callbacks) => {
+    '@/lib/findingFlow': { runFinding: (id, signal, callbacks) => {
       activeSignal = signal; callbacks.update(group()); callbacks.started();
       return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
     } },
@@ -203,7 +215,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: '' }) },
     'next/navigation': { useRouter: () => ({ push: url => navigation.push(url), replace() { throw Error('No automatic navigation'); } }) },
     'react/jsx-runtime': require('react/jsx-runtime'), '@/components/Smiley': { Smiley: 'svg' },
-    '@/lib/findingFlow': { runFinding: (id, fresh, signal, handlers) => { callbacks = handlers; return Promise.resolve(); } },
+    '@/lib/findingFlow': { runFinding: (id, signal, handlers) => { callbacks = handlers; return Promise.resolve(); } },
   }, {
     AbortController, URLSearchParams, window: { location: { search: '' } },
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},

@@ -10,7 +10,7 @@ export async function POST() {
   try {
     let acct = u.nessie_account_id as string | null;
     if (!acct) {
-      const l = await linkAccount(u.name);
+      const l = await linkAccount(u.name, uid);
       acct = l.accountId;
       await q("update users set nessie_customer_id=$1, nessie_account_id=$2 where id=$3", [l.customerId, acct, uid]);
     }

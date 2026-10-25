@@ -1,12 +1,12 @@
 // Pure discovery rules shared by the server and synthetic demo. No I/O or private data returned.
-import { AIRPORTS, FARE_TTL, TravelInputError, validAirport, validDay, type Candidate, type Option, type Route, type Quote } from './core';
+import { AIRPORTS, FARE_TTL, TravelInputError, airportRegion, validAirport, validHomeAirport, validDay, type TripScope, type Candidate, type Option, type Route, type Quote } from './core';
 import { budgetCheck, type Financial } from './finance';
-export type DiscoveryDates = { version: 1; mode: 'discover'; depart: string; return: string };
+export type DiscoveryDates = { version: 1; mode: 'discover'; depart: string; return: string; scope: TripScope };
 export type DiscoverySummary = { searchedCount: number; qualifiedCount: number; returnedCount: number };
 export const SEARCH_LEASE_MS = 150000;
 export function defaultDates(now = new Date()): DiscoveryDates {
   const day = (offset: number) => new Date(now.getTime() + offset * 864e5).toISOString().slice(0, 10);
-  return { version: 1, mode: 'discover', depart: day(30), return: day(33) };
+  return { version: 1, mode: 'discover', depart: day(30), return: day(33), scope: 'national' };
 }
 /** Old candidate arrays use the first option's dates. Reading past final trips must not revalidate against today. */
 export function readDates(value: unknown): DiscoveryDates | null {
@@ -15,7 +15,9 @@ export function readDates(value: unknown): DiscoveryDates | null {
   const x = raw as Record<string, unknown>;
   if (!Array.isArray(value) && (x.mode !== undefined && x.mode !== 'discover' || x.version !== undefined && x.version !== 1)) return null;
   if (!validDay(x.depart) || !validDay(x.return) || x.return <= x.depart) return null;
-  return { version: 1, mode: 'discover', depart: x.depart, return: x.return };
+  // Trips saved before scope existed read as National. An unknown scope is rejected, not guessed.
+  if (x.scope !== undefined && x.scope !== 'state' && x.scope !== 'national' && x.scope !== 'global') return null;
+  return { version: 1, mode: 'discover', depart: x.depart, return: x.return, scope: (x.scope as TripScope | undefined) ?? 'national' };
 }
 export function validateDates(value: unknown, now = new Date()): DiscoveryDates {
   const dates = readDates(value);
@@ -32,6 +34,10 @@ const geography: Record<string, readonly [number, number]> = {
   JFK:[40.6,-73.8], LAS:[36.1,-115.2], LAX:[33.9,-118.4], MCO:[28.4,-81.3],
   MIA:[25.8,-80.3], MSP:[44.9,-93.2], PDX:[45.6,-122.6], PHL:[39.9,-75.2],
   PHX:[33.4,-112.0], SAN:[32.7,-117.2], SEA:[47.4,-122.3], SFO:[37.6,-122.4], SLC:[40.8,-112.0],
+  SAT:[29.5,-98.5], HOU:[29.6,-95.3], DAL:[32.8,-96.9], OAK:[37.7,-122.2], SJC:[37.4,-121.9],
+  SMF:[38.7,-121.6], BUR:[34.2,-118.4], FLL:[26.1,-80.2], TPA:[28.0,-82.5], LGA:[40.8,-73.9],
+  CUN:[21.0,-86.9], MEX:[19.4,-99.1], PVR:[20.7,-105.3], YYZ:[43.7,-79.6], YVR:[49.2,-123.2],
+  LHR:[51.5,-0.5], CDG:[49.0,2.5], FCO:[41.8,12.2], BCN:[41.3,2.1], HND:[35.5,139.8], ICN:[37.5,126.4], SJO:[10.0,-84.2],
 };
 const hubs = new Set(['ATL','ORD','DFW','DEN','IAH','CLT','DTW','MSP','SLC','PHX','LAX','SFO','SEA','EWR','JFK','IAD','MIA']);
 function distance(a: string, b: string) {
@@ -46,7 +52,7 @@ function distance(a: string, b: string) {
  * Never search more than six destinations or eight travelers; actual quotes decide affordability.
  */
 export function discoveryShortlist(origins: string[], dates: DiscoveryDates, excludedAirports: string[] = []): Candidate[] {
-  if (!origins.length || origins.length > 8 || origins.some(o => !validAirport(o))) throw new TravelInputError('Every traveler needs a supported home airport.');
+  if (!origins.length || origins.length > 8 || origins.some(o => !validHomeAirport(o))) throw new TravelInputError('Every traveler needs a supported home airport.');
   const excluded = new Set(excludedAirports.filter(validAirport));
   const counts = new Map<string,number>();
   for (const origin of origins) counts.set(origin,(counts.get(origin)??0)+1);
@@ -54,9 +60,15 @@ export function discoveryShortlist(origins: string[], dates: DiscoveryDates, exc
     const lengths = origins.map(origin => distance(origin,airport));
     return lengths.reduce((a,b)=>a+b,0)/lengths.length + .65*Math.max(...lengths) - (hubs.has(airport)?100:0);
   };
-  const ranked = AIRPORTS.map(([airport])=>airport).filter(airport=>!excluded.has(airport) && !origins.every(o=>o===airport))
-    .sort((a,b)=>score(a)-score(b)||a.localeCompare(b));
-  const memberCities = counts.size > 1 ? [...counts].filter(([airport])=>!excluded.has(airport)).sort((a,b)=>b[1]-a[1]||score(a[0])-score(b[0])||a[0].localeCompare(b[0])).slice(0,2).map(([airport])=>airport) : [];
+  // The scope picks the pool: in-state is any traveler's home state, national is every US airport, global is international only.
+  const states = new Set(origins.map(o => airportRegion(o)));
+  const inScope = ([, , region, country]: readonly [string, string, string, string]) =>
+    dates.scope === 'global' ? country !== 'US' : country === 'US' && (dates.scope !== 'state' || states.has(region));
+  const pool = AIRPORTS.filter(inScope).map(([airport])=>airport).filter(airport=>!origins.every(o=>o===airport));
+  if (!pool.length) throw new TravelInputError('Not enough airports in your state. Try National.');
+  const inPool = new Set(pool);
+  const ranked = pool.filter(airport=>!excluded.has(airport)).sort((a,b)=>score(a)-score(b)||a.localeCompare(b));
+  const memberCities = counts.size > 1 ? [...counts].filter(([airport])=>inPool.has(airport)&&!excluded.has(airport)).sort((a,b)=>b[1]-a[1]||score(a[0])-score(b[0])||a[0].localeCompare(b[0])).slice(0,2).map(([airport])=>airport) : [];
   const selected = [...new Set([...memberCities,...ranked])].slice(0,6);
   return selected.sort((a,b)=>score(a)-score(b)||a.localeCompare(b)).map((airport,i)=>({id:i+1,airport,depart:dates.depart,return:dates.return}));
 }
@@ -90,23 +102,34 @@ export function recommendDestinations(qualified: Option[]): Option[] {
   return selected.slice(0,3);
 }
 export type DiscoveryTraveler = { id: number; name: string; airport: string; cap: number; funds: Financial };
-/** Reject before persistence: group-total cheapness can never conceal a member's over-cap route. */
+/** Reject before persistence: group-total cheapness can never conceal a member's over-cap route.
+ * Candidates with complete, fresh fares that failed only on a cap or the funds check are kept apart. They are used only when
+ * nothing fits anyone: then the three cheapest open voting as fits:false, with no per-person check, so no one can tell whose limit was exceeded.
+ */
 export function qualifyDestinations(candidates: Candidate[], travelers: DiscoveryTraveler[], quotes: Map<string,Quote>, now = Date.now()): { options: Option[]; summary: DiscoverySummary } {
-  const qualified: Option[] = [];
+  const qualified: Option[] = [], overBudget: Option[] = [];
   for (const candidate of candidates) {
     const routes: Route[] = [];
+    let usable = true, over = false;
     for (const member of travelers) {
       const quote = quotes.get(`${member.airport}/${candidate.id}`);
       if (!quote || quote.origin !== member.airport || quote.destination !== candidate.airport || quote.depart !== candidate.depart || quote.return !== candidate.return ||
           (quote.source!=='sample' && (!Number.isFinite(Date.parse(quote.quotedAt)) || now-Date.parse(quote.quotedAt)<0 || now-Date.parse(quote.quotedAt)>=FARE_TTL)) ||
           quote.local !== (quote.origin === quote.destination) || quote.price === null || !Number.isFinite(quote.price) || (quote.local ? quote.price !== 0 || quote.origin !== quote.destination : quote.price <= 0) ||
-          !Number.isFinite(member.cap) || member.cap < 0.01 || quote.price > member.cap) break;
+          !Number.isFinite(member.cap) || member.cap < 0.01) { usable = false; break; }
+      if (quote.price > member.cap) over = true;
       const check = budgetCheck(quote.price,member.cap,member.funds,now);
-      if (check === false) break; // Known, fresh Nessie availability is also binding. Unknown is caution, not a green.
+      if (check === false) over = true; // Known, fresh Nessie availability is also binding. Unknown is caution, not a green.
       routes.push({ ...quote,userId:member.id,name:member.name,check,checkSource:member.funds.source });
     }
-    if (!travelers.length || routes.length !== travelers.length || routes.every(r=>r.local)) continue;
-    qualified.push({ ...candidate,routes,complete:true,total:Math.round(routes.reduce((sum,r)=>sum+r.price!,0)*100)/100 });
+    if (!usable || !travelers.length || routes.length !== travelers.length || routes.every(r=>r.local)) continue;
+    const total = Math.round(routes.reduce((sum,r)=>sum+r.price!,0)*100)/100;
+    if (!over) qualified.push({ ...candidate,routes,complete:true,total });
+    else overBudget.push({ ...candidate,fits:false,routes:routes.map(r=>({ ...r,check:null,checkSource:'unknown' as const })),complete:true,total });
+  }
+  if (!qualified.length && overBudget.length) {
+    const closest = overBudget.sort((a,b)=>a.total!-b.total!||a.airport.localeCompare(b.airport)||a.id-b.id).slice(0,3);
+    return { options:closest,summary:{ searchedCount:candidates.length,qualifiedCount:0,returnedCount:closest.length } };
   }
   return { options:recommendDestinations(qualified),summary:{ searchedCount:candidates.length,qualifiedCount:qualified.length,returnedCount:Math.min(3,qualified.length) } };
 }
@@ -116,7 +139,7 @@ export function readComparison(value: unknown): { options: Option[]; summary: Di
   const stored = value as any;
   if (stored?.version !== 2 || !Array.isArray(stored.options)) return { options:[],summary:null,discovery:false };
   const s = stored.summary;
-  const valid = s && [s.searchedCount,s.qualifiedCount,s.returnedCount].every((n: unknown)=>typeof n==='number'&&Number.isInteger(n)&&n>=0) && s.searchedCount<=6 && s.qualifiedCount<=s.searchedCount && s.returnedCount<=3 && s.returnedCount<=s.qualifiedCount;
+  const valid = s && [s.searchedCount,s.qualifiedCount,s.returnedCount].every((n: unknown)=>typeof n==='number'&&Number.isInteger(n)&&n>=0) && s.searchedCount<=6 && s.qualifiedCount<=s.searchedCount && s.returnedCount<=3 && (s.returnedCount<=s.qualifiedCount || s.qualifiedCount===0);
   return { options:stored.options,summary:valid?{searchedCount:s.searchedCount,qualifiedCount:s.qualifiedCount,returnedCount:s.returnedCount}:null,discovery:true };
 }
 

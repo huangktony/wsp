@@ -40,7 +40,7 @@ function fixture(failure=null){
     const result=await query(sql,args);if(sql==='commit'||sql==='rollback'){unlock?.();unlock=null;}return result;
   }};}};
   const service=load('lib/travel/service.ts',{
-    '../db':{pool,q:async(sql,a)=>(await query(sql,a)).rows,q1:async()=>({owed:50})},'node:crypto':require('node:crypto'),
+    '../db':{pool,q:async(sql,a)=>(await query(sql,a)).rows,q1:async(sql,a)=>sql.includes('from users')?{nessie_account_id:members.find(m=>m.user_id===a[0])?.nessie_account_id??null}:{owed:50}},'node:crypto':require('node:crypto'),
     '../nessie':{isLiveAccount:id=>id==='live-test',loadSpending:async()=>{financialCalls++;return {balance:500,purchases:[{merchant_id:'m',amount:100,purchase_date:'2020-01-01',status:'completed'}],ledger:[]};}},
     './ballot':ballot,'./flow':load('lib/travel/flow.ts'),'./discovery':discovery,'./core':core,'./finance':finance,'./flights':{compareFlights:async(origins,options)=>{generationCalls++;if(hold)await hold;return new Map(origins.flatMap((origin,i)=>options.map(o=>[`${origin}/${o.id}`,{origin,destination:o.airport,depart:o.depart,return:o.return,failure,error:failure?'private raw error':undefined,price:failure?null:origin===o.airport?0:o.id===1?[120,110,180][i]:o.id===2?[180,210,250][i]:1000,local:origin===o.airport,airlines:['Example'],stops:0,duration:100,quotedAt:new Date().toISOString(),source:'serpapi'}])));}},
   });
@@ -147,7 +147,7 @@ test('majority-vetoed options disappear and cannot win or receive more votes',as
   for(const uid of [1,2,3]){await f.service.castVote(5,uid,{comparisonId,optionId:2,value:'approve'});await f.service.confirmBallot(5,uid,{comparisonId});}
   assert.equal(f.comparisons[0].winner_id,2);
 });
-test('saved final survives setup edits and failed replacement, which requires majority approval',async()=>{
+test('saved final survives setup edits and an over-budget replacement, which requires majority approval',async()=>{
   const f=fixture();const comparisonId=await makeFinal(f);
   await f.service.saveSetup(5,1,{airport:'ELP',budget:1});
   assert.equal(f.comparisons[0].status,'final');
@@ -158,7 +158,8 @@ test('saved final survives setup edits and failed replacement, which requires ma
   await f.service.requestRedraw(5,2,{comparisonId});
   await f.service.startComparison(5,1);
   const data=await f.service.readTrip(5,1);
-  assert.equal(data.comparison.status,'failed');assert.equal(data.savedFinal.id,comparisonId);assert.equal(data.savedFinal.winnerId,1);
+  assert.equal(data.comparison.status,'voting','over-budget closest options open voting instead of failing');assert.ok(data.comparison.options.every(o=>o.fits===false));
+  assert.equal(data.savedFinal.id,comparisonId);assert.equal(data.savedFinal.winnerId,1,'the saved pick is untouched');
 });
 test('final confirmation is creator-only and locks redraw, dates and replacement searches',async()=>{
   const f=fixture();const comparisonId=await makeFinal(f);
@@ -233,4 +234,49 @@ test('authorized redraw excludes previous winner; exhausted destination pool doe
   await assert.rejects(f.service.startComparison(5,1),e=>e.status===422&&/No new supported destinations/.test(e.message));
   assert.equal(f.generationCalls,count);
   assert.equal((await f.service.readTrip(5,1)).savedFinal.id,comparisonId);
+});
+
+test('setup suggestions come from the member\'s own available money, only for a live account, and only to that member',async()=>{
+  const f=fixture();
+  assert.equal((await f.service.ownSetup(5,1)).suggestions,null,'a mock account has no suggestions');
+  f.members[0].nessie_account_id=null;assert.equal((await f.service.ownSetup(5,1)).suggestions,null,'no account has no suggestions');
+  f.members[0].nessie_account_id='live-test';
+  // balance 500, one 100 purchase, 50 owed: 350 available
+  const own=await f.service.ownSetup(5,1);assert.equal(JSON.stringify(own.suggestions),JSON.stringify({light:30,room:70,flex:120,available:350}));
+  assert.equal((await f.service.ownSetup(5,2)).suggestions,null,'another member is not affected');
+  const raw=JSON.stringify(await f.service.readTrip(5,1));assert.ok(!raw.includes('suggestions')&&!raw.includes('"flex"'),'never part of the trip payload');
+});
+test('trip scope saves through the dates path, bumps the revision when it changes, and a legacy trip reads as National',async()=>{
+  const f=fixture();const base=discovery.defaultDates();
+  assert.equal((await f.service.readTrip(5,1)).dates?.scope,'national','legacy candidates read as National');
+  const legacy={...f.trip.candidates[0]};
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return}});
+  assert.equal(f.trip.revision,1,'saving the same dates as National changes nothing for a legacy trip');
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return,scope:'global'}});
+  assert.equal(f.trip.revision,2,'a scope change invalidates old searches like a date change');
+  assert.equal((await f.service.readTrip(5,1)).dates.scope,'global');
+  await f.service.saveDates(5,1,{dates:{...base,depart:legacy.depart,return:legacy.return,scope:'global'}});
+  assert.equal(f.trip.revision,2,'saving the same scope again changes nothing');
+  await assert.rejects(f.service.saveDates(5,1,{dates:{...base,scope:'galaxy'}}),e=>e.message.includes('future departure'));
+  await assert.rejects(f.service.saveDates(5,2,{dates:{...base,scope:'state'}}),e=>e.status===403);
+});
+
+test('nothing fits: voting opens on the closest options, vetoes protect the person over budget, and the payload shows no one\'s limit',async()=>{
+  const f=fixture();f.members[0].flight_budget=100;f.members[1].flight_budget=100;f.members[2].flight_budget=100;
+  const {comparisonId}=await f.service.startComparison(5,1);
+  const own=(await f.service.readTrip(5,1)).comparison;
+  assert.equal(own.status,'voting');assert.equal(own.options.length,3);assert.ok(own.options.every(o=>o.fits===false&&o.complete));
+  assert.equal(own.summary.qualifiedCount,0);assert.equal(own.summary.returnedCount,3);
+  for(const uid of [1,2,3]){const data=(await f.service.readTrip(5,uid)).comparison;const raw=JSON.stringify(data.options);
+    assert.ok(!/"check":(true|false)/.test(raw)&&!raw.includes('nessie-sandbox')&&!raw.includes('simulated')&&!raw.includes('flight_budget')&&!raw.includes('"cap"'),'viewer '+uid);}
+  await f.service.castVote(5,1,{comparisonId,optionId:own.options[0].id,value:'approve'});
+  await f.service.castVote(5,2,{comparisonId,optionId:own.options[0].id,value:'veto'});
+  await f.service.castVote(5,3,{comparisonId,optionId:own.options[0].id,value:'veto'});
+  assert.ok((await f.service.readTrip(5,1)).comparison.removedOptionIds.includes(own.options[0].id),'a majority veto removes an over-budget option like any other');
+});
+test('when some fares fit, no over-budget option is offered; with no fares at all the search still fails',async()=>{
+  const fits=fixture();await fits.service.startComparison(5,1);
+  const data=(await fits.service.readTrip(5,1)).comparison;assert.ok(data.options.length>0&&data.options.every(o=>o.fits!==false));
+  const none=fixture('provider');await none.service.startComparison(5,1);
+  const failed=(await none.service.readTrip(5,1)).comparison;assert.equal(failed.status,'failed');assert.equal(failed.options.length,0);
 });

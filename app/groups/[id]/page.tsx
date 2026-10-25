@@ -127,7 +127,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           {open && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
           {!open && <Link href={`/groups/${id}/finding${final ? "?new=1" : ""}`} className={primary}>{final ? "Find new plans" : "Find plans"}</Link>}
-          <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>
+          {!final && <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>}
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>
             <button type="button" disabled={busy} onClick={() => run(() => api(`/api/groups/${id}`, "DELETE"))} className={danger}>Delete group</button>

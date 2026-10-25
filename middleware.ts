@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Presence check only; real verification happens in route handlers.
 export function middleware(req: NextRequest) {
+  if (req.nextUrl.pathname === "/travel/demo") return;
   if (!req.cookies.get("wsp_session")) return NextResponse.redirect(new URL("/login", req.url));
 }
-export const config = { matcher: ["/", "/groups/:path*", "/spending", "/profile", "/settings"] };
+export const config = { matcher: ["/", "/groups/:path*", "/spending", "/profile", "/settings", "/travel/:path*"] };

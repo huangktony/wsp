@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useSetupGate } from "@/lib/useSetupGate";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Inter } from "next/font/google";
@@ -72,6 +73,12 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   }, [status, id, r]);
 
   if (!data) return <div className={inter.className}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : <PlansSkeleton />}</Page></div>;
+  if (status === "failed" || status === "superseded") return (
+    <div className={inter.className}><Page back={`/groups/${id}`}>
+      <p role="alert" className="text-sm text-maroon">{data.round.search_error || "These plans are no longer available. Try finding plans again."}</p>
+      <Link href={`/groups/${id}/finding`} className="btn mt-4">Try again</Link>
+    </Page></div>
+  );
   if (!data.round || status !== "voting") return <div className={inter.className}><Page back={`/groups/${id}`}>{data.round ? <PlansSkeleton /> : "No plans yet."}</Page></div>;
 
   const voteOf = (p: any): Vote => (p.id in mine ? mine[p.id] : p.my_vote ?? null);

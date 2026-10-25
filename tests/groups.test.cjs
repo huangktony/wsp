@@ -56,6 +56,7 @@ function fixture(memberIds = [1, 2, 3]) {
   mocks['@/lib/voting'] = { getVotingParticipation: async () => ({ votedMemberIds: [], voted: 0, memberCount: s.members.size, roundOpen: false }) };
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
+  mocks['@/lib/pipeline'] = { settleRound: async () => 'voting' };
   mocks['@/lib/redraw'] = { redrawStatus: async () => null };
   const del = load('app/api/groups/[id]/route.ts', mocks).DELETE;
   const leave = load('app/api/groups/[id]/leave/route.ts', mocks).POST;

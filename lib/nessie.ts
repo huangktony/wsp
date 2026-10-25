@@ -177,7 +177,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
       njList(`/accounts/${accountId}/withdrawals`),
       njList(`/accounts/${accountId}/deposits`),
     ]);
-    const entry = (kind: "in" | "out") => (r: any): LedgerEntry => ({ kind, date: r.transaction_date, amount: r.amount, description: r.description });
+    const entry = (kind: "in" | "out") => (r: any): LedgerEntry => ({ kind, date: r.transaction_date, amount: r.amount, description: r.description, status: r.status });
     const ledger = [...withdrawals.filter((r) => r.status !== "cancelled").map(entry("out")), ...deposits.filter((r) => r.status !== "cancelled").map(entry("in"))];
     const purchases: NessiePurchase[] = rows.map((r) => ({ merchant_id: r.merchant_id, purchase_date: r.purchase_date, amount: r.amount, status: r.status }));
     const merchants = new Map<string, MerchantInfo>();

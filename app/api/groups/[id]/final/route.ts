@@ -10,7 +10,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const id = Number((await params).id);
   const g = await q1<any>("select created_by from groups where id=$1", [id]);
   if (!g || g.created_by !== uid) return fail("only the group creator can close voting", 403);
-  const round = await q1<any>("select id,status from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [id]);
+  const round = await q1<any>("select id,status from plan_rounds where group_id=$1 order by (status='final') desc,id desc limit 1", [id]);
   if (!round || round.status !== "voting") return fail("no open round", 409);
   return json({ status: await settleRound(round.id, true) });
 }

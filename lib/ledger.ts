@@ -5,7 +5,7 @@
 
 const PREFIX = "WSP split|";
 
-export type LedgerEntry = { kind: "in" | "out"; date: string; amount: number; description?: string };
+export type LedgerEntry = { kind: "in" | "out"; date: string; amount: number; description?: string; status?: string };
 export type SplitMeta = { payId: number; acct: string; cents: number | null; label: string };
 
 const clean = (s: string) => s.replace(/\|/g, "/").replace(/\s+/g, " ").trim().slice(0, 60);

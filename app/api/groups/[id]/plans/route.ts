@@ -75,7 +75,7 @@ export async function GET(
   };
 
   let round = await q1<any>(
-    "select id,status from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1",
+    "select id,status from plan_rounds where group_id=$1 order by (status='final') desc,id desc limit 1",
     [id],
   );
   if (!round) return json({ ...base, round: null, plans: [] });
@@ -83,7 +83,7 @@ export async function GET(
   if (round.status === "voting") await settleRound(round.id);
 
   round = await q1<any>(
-    `select id,status,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
+    `select id,status,to_jsonb(r)->>'search_city' search_city,to_jsonb(r)->>'search_error' search_error,(to_jsonb(r)->>'sample_places')::boolean sample_places,group_tier,winner_plan_id,slot,attempt,excluded,vote_deadline,split_mode,requests_sent,payer_id,created_at,
        greatest(0, extract(epoch from vote_deadline - now()))::int seconds_left
      from plan_rounds r where id=$1`,
     [round.id],
@@ -106,3 +106,20 @@ export async function GET(
     if (open) {
       delete p.approve;
       delete p.veto;
+    }
+  }
+
+  const members = await q<{ id: number; name: string }>(
+    "select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [id],
+  );
+  const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
+  let split = null;
+  let payments: any[] = [];
+  if (round.status === "final") {
+    split = await computeSplit(round.id);
+    payments = await q<any>(
+      "select p.id,p.user_id,u.name,p.amount::float amount,p.status,p.reminded_at from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id", [round.id],
+    );
+  }
+  return json({ ...base, round, plans, members, memberCount, voted, roundOpen, split, payments, isPayer: round.payer_id === uid, redraw: await redrawStatus(id, uid) });
+}

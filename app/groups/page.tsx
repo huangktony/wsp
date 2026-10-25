@@ -48,14 +48,13 @@ function GroupsContent() {
   const results = data?.map((group, index) => ({ group, index })).filter(({ group }) =>
     !term || [group.name, group.city, group.status].some((value) => typeof value === "string" && value.toLowerCase().includes(term))
   );
-  const featured = (results?.find(({ group }) => group.status === "VOTING OPEN") ?? results?.[0])?.group;
-
-  const needsVote = featured?.status === "VOTING OPEN" && !featured.my_voted;
-  const canVote = featured?.status === "VOTING OPEN";
+  const voting = results?.filter(({ group }) => group.status === "VOTING OPEN");
+  const remaining = results?.filter(({ group }) => group.status !== "VOTING OPEN");
   return (
     <Page variant="plain" tabs>
       <div className={`${inter.className} bg-surface text-indigo`}>
-        <header className="flex items-center justify-between px-6 pb-3 pt-6">
+        <p className="px-6 pt-6 text-xs font-extrabold tracking-[0.18em] text-secondary">WSP HANGOUT</p>
+        <header className="flex items-center justify-between px-6 pb-3 pt-2">
           {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }}>
             <div className="relative min-w-0 flex-1">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-4 top-3"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l5 5" /></svg>
@@ -105,24 +104,31 @@ function GroupsContent() {
               </Link>
             ))}
           </section>}
-          {featured && (
-            <article className={`relative flex flex-col rounded-3xl ${needsVote ? "bg-orchid/40" : "bg-pistachio"}`}>
-              <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? "bg-orchid" : "bg-matcha"} px-[18px] py-4`}>
-                {featured.status && <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
-                <Smiley size={48} fill={needsVote ? "fill-pistachio" : undefined} />
-              </div>
-              <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
-                <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
-                  <Link href={`/groups/${featured.id}`} className={`after:absolute after:inset-0 after:rounded-3xl ${focus}`}>{featured.name}</Link>
-                </h2>
-                <p className="text-sm text-secondary">{meta(featured)}</p>
-                <div className="mt-1.5 flex items-center justify-end">
-                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>{needsVote || !canVote ? "Vote now" : "Change vote"} <span aria-hidden="true">→</span></Link>
-                </div>
-              </div>
-            </article>
+          {!!voting?.length && (
+            <section aria-label="Groups with voting open" className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-6 px-6 py-2">
+              {voting.map(({ group: featured }) => {
+                const needsVote = !featured.my_voted;
+                return (
+                  <article key={featured.id} className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl ${needsVote ? "bg-orchid/40" : "bg-pistachio"}`}>
+                    <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? "bg-orchid" : "bg-matcha"} px-[18px] py-4`}>
+                      {featured.status && <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
+                      <Smiley size={48} fill={needsVote ? "fill-pistachio" : undefined} />
+                    </div>
+                    <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
+                      <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
+                        <Link href={`/groups/${featured.id}`} className={`after:absolute after:inset-0 after:rounded-3xl ${focus}`}>{featured.name}</Link>
+                      </h2>
+                      <p className="text-sm text-secondary">{meta(featured)}</p>
+                      <div className="mt-1.5 flex items-center justify-end">
+                        <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>{needsVote ? "Vote now" : "Change vote"} <span aria-hidden="true">→</span></Link>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
           )}
-          {results?.map(({ group, index }) => group.id !== featured?.id && (
+          {remaining?.map(({ group, index }) => (
             <Link key={group.id} href={`/groups/${group.id}`} className={`flex items-center gap-3.5 rounded-[20px] border border-azure bg-surface px-[18px] py-4 ${focus}`}>
               <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{initials(group.name)}</span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -144,5 +150,5 @@ function GroupsContent() {
 }
 
 export default function Groups() {
-  return <Suspense fallback={<Page variant="plain" tabs><header className={`${inter.className} px-6 pb-3 pt-6 text-indigo`}><h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Groups</h1></header></Page>}><GroupsContent /></Suspense>;
+  return <Suspense fallback={<Page variant="plain" tabs><header className={`${inter.className} px-6 pb-3 pt-6 text-indigo`}><p className="mb-2 text-xs font-extrabold tracking-[0.18em] text-secondary">WSP HANGOUT</p><h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Groups</h1></header></Page>}><GroupsContent /></Suspense>;
 }

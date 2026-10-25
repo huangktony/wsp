@@ -27,6 +27,7 @@ function fixture({ provider, memberFails = false, key = 'fake-test-key' } = {}) 
     },
   });
   const route = load('app/api/groups/route.ts', {
+    '@/lib/pipeline': { settleRound: async () => 'voting' },
     '@/lib/api': { requireUser: async () => 29, json: body => ({ status: 200, body }), fail: (error, status = 400) => ({ status, body: { error } }) },
     '@/lib/serpapi': search, '@/lib/usCities': cities,
     '@/lib/inviteCode': { generateInviteCode: () => 'WSP-ABC' },

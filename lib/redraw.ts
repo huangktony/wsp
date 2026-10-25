@@ -3,7 +3,8 @@
 // out the old winner's places. Everything that must be atomic happens in one transaction holding the same per-group advisory lock
 // that startRound uses, and the old round is flipped to 'redrawn' with a single conditional UPDATE. That flip is also what
 // makes sending the split for the old round impossible: "send" claims the same row first, so exactly one of them wins.
-import { pool, q, q1 } from "./db";
+import { roundSettings, searchPreferences } from "./roundSettings";
+import { pool, q1 } from "./db";
 import { REDRAW_MESSAGES, redrawGate, redrawThreshold, shouldRedraw } from "./redrawRules";
 
 export class RedrawError extends Error {
@@ -19,7 +20,7 @@ export async function redrawStatus(groupId: number, userId: number): Promise<Red
        (select count(*)::int from memberships where group_id=r.group_id) members,
        (select count(*)::int from redraw_votes v join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where v.round_id=r.id) votes,
        exists(select 1 from redraw_votes where round_id=r.id and user_id=$2) mine
-     from plan_rounds r where r.group_id=$1 and r.status<>'failed' order by r.id desc limit 1`, [groupId, userId]);
+     from plan_rounds r where r.group_id=$1 order by (r.status='final') desc,r.id desc limit 1`, [groupId, userId]);
   if (!r || r.status !== "final") return null;
   return { locked: r.requests_sent, votes: r.votes, members: r.members, needed: redrawThreshold(r.members), mine: r.mine };
 }
@@ -34,7 +35,7 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
     await c.query("select pg_advisory_xact_lock(4242, $1)", [groupId]);
     if (!(await c.query("select 1 from memberships where group_id=$1 and user_id=$2", [groupId, userId])).rows.length) throw new RedrawError("not in this group", 403);
 
-    const last = (await c.query("select id,status,attempt,excluded,requests_sent from plan_rounds where group_id=$1 and status<>'failed' order by id desc limit 1", [groupId])).rows[0];
+    const last = (await c.query("select id,status,attempt,excluded,requests_sent from plan_rounds where group_id=$1 order by (status='final') desc,id desc limit 1", [groupId])).rows[0];
     const gate = redrawGate(last);
     if (gate !== "ok") throw new RedrawError(REDRAW_MESSAGES[gate], 409);
 
@@ -55,7 +56,18 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
     if (!flipped.rowCount) throw new RedrawError(REDRAW_MESSAGES.locked, 409);
     const places = (await c.query("select distinct s->>'place' place from plans p, jsonb_array_elements(p.stops) s where p.id=$1", [flipped.rows[0].winner_plan_id])).rows.map((x) => x.place as string);
     const excluded = [...new Set([...(last.excluded ?? []), ...places])];
-    const created = await c.query("insert into plan_rounds(group_id,status,attempt,excluded) values($1,'generating',$2,$3) returning id", [groupId, last.attempt + 1, excluded]);
+    // Redraw is a new search too: snapshot the current settings under the same
+    // group lock as startRound, so arriving clients reuse this generation owner.
+    const group = (await c.query("select city from groups where id=$1 for share", [groupId])).rows[0];
+    const members = (await c.query(
+      "select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id", [groupId])).rows;
+    const settings = roundSettings(members);
+    const preferences = searchPreferences(settings);
+    if (!group?.city?.trim() || !preferences.distance) throw new RedrawError("Finish group setup before finding new plans.", 409);
+    const created = await c.query(
+      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
+      [groupId, last.attempt + 1, excluded, group.city.trim(), preferences.distance, process.env.USE_SAMPLE_PLACES === "true", preferences.tier, JSON.stringify(settings)]);
+
     await c.query("commit");
     return { started: true, roundId: created.rows[0].id, oldRoundId: last.id };
   } catch (e) {
@@ -67,7 +79,26 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
 }
 
 /** The new plans could not be made: put the group back on its final plan and clear the votes, so it can simply try again. */
-export async function undoRedraw(oldRoundId: number): Promise<void> {
-  await q("update plan_rounds set status='final' where id=$1 and status='redrawn'", [oldRoundId]);
-  await q("delete from redraw_votes where round_id=$1", [oldRoundId]);
+export async function undoRedraw(oldRoundId: number, failedRoundId: number): Promise<void> {
+  const c = await pool.connect();
+  try {
+    await c.query("begin");
+    const old = (await c.query("select group_id from plan_rounds where id=$1", [oldRoundId])).rows[0];
+    if (old) {
+      await c.query("select pg_advisory_xact_lock(4242, $1)", [old.group_id]);
+      // A later settings edit/retry owns the group now; an older failed provider
+      // call must not restore a final over that newer search.
+      const latest = (await c.query("select id,status from plan_rounds where group_id=$1 order by id desc limit 1", [old.group_id])).rows[0];
+      if (latest?.id === failedRoundId && latest.status === "failed") {
+        await c.query("update plan_rounds set status='final' where id=$1 and status='redrawn'", [oldRoundId]);
+        await c.query("delete from redraw_votes where round_id=$1", [oldRoundId]);
+      }
+    }
+    await c.query("commit");
+  } catch (e) {
+    await c.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    c.release();
+  }
 }

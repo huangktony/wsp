@@ -13,6 +13,7 @@ import { splitAmounts, type SplitMode } from "./split";
  *   generating -> voting -> final      (a plan won)
  *                        -> vetoed     (every plan was vetoed, none approved; next round leaves those places out)
  *   generating -> failed               (generation crashed or stalled)
+ *   generating/voting -> superseded    (a new search replaced this attempt)
  * After final, the payer (group creator) picks even / by item split and sends requests (requests_sent).
  */
 
@@ -65,8 +66,10 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
       [groupId],
     );
 
+    // A failed redraw explicitly restores its previous final; otherwise use the
+    // newest attempt, including failures, so an older voting round cannot resurface.
     const last = (await c.query(
-      "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1",
+      "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 order by (status='final') desc,id desc limit 1 for update",
       [groupId],
     )).rows[0];
 
@@ -98,6 +101,9 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     if (!preferences?.distance) {
       throw new Error("No group distance preference available");
     }
+
+    // Superseded work must not re-open voting when an older provider call returns.
+    await c.query("update plan_rounds set status='superseded' where group_id=$1 and status in ('generating','voting')", [groupId]);
 
     const r = await c.query(
       "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
@@ -201,7 +207,7 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
 
     const hours = round.vote_hours ?? 24;
     await q(
-      "update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1",
+      "update plan_rounds set status='voting', slot=$2, group_tier=$3, vote_deadline=now() + make_interval(hours => $4) where id=$1 and status='generating'",
       [roundId, slot, tier, hours],
     );
   } catch (e) {
@@ -210,9 +216,9 @@ export async function fillRound(roundId: number, find: typeof findPlaces = findP
       : "Couldn't make plans this time. Try again.";
 
     if (await hasSearchMetadata(async (sql, args) => ({ rows: await q(sql, args) }))) {
-      await q("update plan_rounds set status='failed',search_error=$2 where id=$1", [roundId, message]);
+      await q("update plan_rounds set status='failed',search_error=$2 where id=$1 and status='generating'", [roundId, message]);
     } else {
-      await q("update plan_rounds set status='failed' where id=$1", [roundId]);
+      await q("update plan_rounds set status='failed' where id=$1 and status='generating'", [roundId]);
     }
     throw e;
   }
@@ -298,7 +304,7 @@ export async function settleRound(roundId: number, force = false): Promise<strin
        (select count(*)::int from plans where round_id=r.id) plans,
        (select count(*)::int from memberships where group_id=r.group_id) members,
        (select count(*)::int from votes v join plans p on p.id=v.plan_id join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where p.round_id=r.id) votes
-     from plan_rounds r where r.id=$1`,
+     from plan_rounds r where r.id=$1 and r.id=(select id from plan_rounds where group_id=r.group_id order by (status='final') desc,id desc limit 1)`,
     [roundId],
   );
 
@@ -325,7 +331,7 @@ export async function settleRound(roundId: number, force = false): Promise<strin
     `update plan_rounds set status='final', winner_plan_id=$2, payer_id=(select created_by from groups where id=$3) where id=$1 and status='voting'`,
     [roundId, w.id, r.group_id],
   );
-  return "final";
+  return (await q1<any>("select status from plan_rounds where id=$1", [roundId])).status;
 }
 
 /**

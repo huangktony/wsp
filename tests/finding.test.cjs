@@ -21,6 +21,9 @@ function load(file, mocks = {}, globals = {}) {
     ...globals,
     require(name) {
       if (name in mocks) return mocks[name];
+      if (name === "@/components/RedrawVote") return { RedrawVote: "redraw" };
+      if (name === './roundParticipation' || name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
+      if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };
       throw Error(`Unmocked import: ${name}`);
     },
   });
@@ -42,7 +45,8 @@ const searchMembers = [{
 
 const group = (status = null, planCount = 0) => ({
   groupTier: '$',
-  members: [{ setup_done: true }, { setup_done: true }],
+  me: 1,
+  members: [{ id: 1, setup_done: true }, { id: 2, setup_done: true }],
   finding: {
     round: status ? { id: 10, status } : null,
     memberCount: 2,
@@ -113,6 +117,7 @@ function flowFixture(responses) {
     now: () => time,
   };
   const { runFinding } = load('lib/findingFlow.ts', {
+    './finding': finding,
     './client': {
       api() { throw Error('unexpected live call'); },
     },
@@ -281,6 +286,7 @@ test('POST only fills the claimed round; concurrent/non-owner requests do not ge
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},
@@ -318,6 +324,7 @@ test('POST find-plans on a FINAL plan is refused with 409: only the group redraw
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},
@@ -360,6 +367,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
     },
     'next/link': { default: 'a' },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/finding': finding,
     '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': {
       useRouter: () => ({
@@ -433,6 +441,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
     },
     'next/link': { default: 'a' },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/finding': finding,
     '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': {
       useRouter: () => ({
@@ -473,9 +482,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
 
   let tree = render();
   effects[0]();
-  assert.equal(button(tree).props.disabled, true);
-  assert.equal(button(tree).props['aria-disabled'], true);
-  button(tree).props.onClick();
+  assert.equal(tree, null, 'do not show the finding screen before checking setup');
   assert.equal(navigation.length, 0);
   callbacks.update(group('voting', 3));
   callbacks.started();
@@ -516,7 +523,8 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
       },
       'next/link': { default: 'a' },
       'next/font/google': { Inter: () => ({ className: '' }) },
-      '@/lib/useSetupGate': { useSetupGate() {} },
+      '@/lib/finding': finding,
+    '@/lib/useSetupGate': { useSetupGate() {} },
       'next/navigation': {
         useRouter: () => ({
           push() { throw Error('Unexpected navigation'); },
@@ -860,6 +868,7 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
     '@/lib/db': {},
     '@/lib/voting': {},
     '@/lib/redraw': {},
+    '@/lib/payments': {},
     '@/lib/serpapi': {
       MissingCityError: class extends Error {},
       PlaceSearchError: class extends Error {},
@@ -879,7 +888,7 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
   });
   const response = await POST({}, { params: Promise.resolve({ id: '5' }) });
   assert.equal(response.status, 409);
-  assert.equal(response.error, 'finish your setup first');
+  assert.equal(response.error, finding.SETUP_REQUIRED_MESSAGE);
 });
 
 test('editing any search setting creates a fresh round with current Houston distance and tier', async () => {
@@ -1132,6 +1141,7 @@ test('redraw snapshots current city/preferences, and failure restores final only
   const { toggleRedrawVote, undoRedraw } = load('lib/redraw.ts', {
     './db': { pool: { connect: async () => ({ query, release() {} }) } },
     './roundSettings': settingsModule, './redrawRules': load('lib/redrawRules.ts'),
+    './pipeline': { hasSearchMetadata: async () => true },
   });
   const result = await toggleRedrawVote(5, 1);
   assert.equal(result.started, true);
@@ -1160,12 +1170,16 @@ test('settlement closes expired or complete ballots, but cannot finalize an obso
       './db': {
         q1: async sql => {
           if (sql.startsWith('select status')) return { status };
-          assert.match(sql, /r.id=\(select id from plan_rounds/);
+          const normalized = sql.replace(/\s+/g, ' ').trim();
+          assert.match(normalized, /r\.id\s*=\s*\(\s*select (?:latest\.)?id from plan_rounds/);
+          assert.match(normalized, /order by \((?:latest\.)?status='final'\) desc,\s*(?:latest\.)?id desc limit 1/);
           if (condition === 'obsolete') return null;
           return { id: 10, group_id: 5, status, expired: condition === 'expired', plans: 2, members: 2, votes: condition === 'complete' ? 4 : 1 };
         },
         q: async sql => {
-          if (sql.includes('from plans p left join votes')) return [{ id: 101, cost: 12, approves: 1, vetoes: 0 }];
+          if (/from plans p\s+join plan_rounds r/.test(sql) && /left join votes v/.test(sql)) {
+            return [{ id: 101, cost: 12, approves: 1, vetoes: 0 }];
+          }
           assert.match(sql, /and status='voting'/);
           writes++; status = 'final'; return [];
         },
@@ -1175,4 +1189,85 @@ test('settlement closes expired or complete ballots, but cannot finalize an obso
     assert.equal(result, condition === 'obsolete' ? 'missing' : condition === 'open' ? 'voting' : 'final');
     assert.equal(writes, ['expired', 'complete'].includes(condition) ? 1 : 0);
   }
+});
+
+test('home action follows latest status and actual plans, independent of legacy city metadata', () => {
+  for (const legacy of [false, true]) {
+    for (const [status, count, label, destination, fresh] of [
+      [null, 0, 'Find plans', 'finding', false],
+      ['failed', 0, 'Find plans', 'finding', false],
+      ['failed', 2, 'Find plans', 'finding', false],
+      ['voting', 0, 'Find plans', 'finding', false],
+      ['abandoned', 0, 'Find plans', 'finding', false],
+      ['generating', 0, 'Finding plans…', 'finding', false],
+      ['voting', 3, 'Vote on plans', 'plans', false],
+      ['vetoed', 3, 'Find new plans', 'finding', true],
+      ['final', 3, 'Find new plans', 'finding', true],
+      ['confirmed', 3, 'Find new plans', 'finding', true],
+    ]) {
+      const round = status ? { status, search_city: legacy ? null : 'Houston, TX' } : null;
+      const action = finding.groupHomeAction(round, count);
+      assert.equal(action.label, label); assert.equal(action.destination, destination); assert.equal(action.fresh, fresh);
+    }
+  }
+});
+
+
+test('majority redraw preserves current search snapshots instead of creating a legacy Austin round', async () => {
+  for (const schemaReady of [true, false]) {
+    const statements = [];
+    const client = { release() {}, query: async (sql, args) => {
+      statements.push([sql, args]);
+      if (sql.startsWith('select 1 from memberships')) return { rows: [{}] };
+      if (sql.startsWith('select id,status')) return { rows: [{ id: 10, status: 'final', requests_sent: false, attempt: 1, excluded: [] }] };
+      if (sql.startsWith('delete from redraw_votes')) return { rowCount: 0, rows: [] };
+      if (sql.includes(') members,')) return { rows: [{ members: 2, votes: 2 }] };
+      if (sql.startsWith('update plan_rounds')) return { rowCount: 1, rows: [{ winner_plan_id: 11 }] };
+      if (sql.startsWith('select distinct')) return { rows: [{ place: 'Old venue' }] };
+      if (sql.startsWith('select city')) return { rows: [{ city: 'Houston, TX' }] };
+      if (sql.startsWith('select m.user_id')) return { rows: searchMembers };
+      if (sql.startsWith('insert into plan_rounds')) return { rows: [{ id: 12 }] };
+      return { rows: [] };
+    } };
+    const { toggleRedrawVote, RedrawError } = load('lib/redraw.ts', {
+      './db': { pool: { connect: async () => client } },
+      './roundSettings': settingsModule,
+      './pipeline': { hasSearchMetadata: async () => schemaReady },
+      './redrawRules': load('lib/redrawRules.ts'),
+    });
+    if (!schemaReady) {
+      await assert.rejects(toggleRedrawVote(5, 1), RedrawError);
+      assert.equal(statements.at(-1)[0], 'rollback');
+      assert.equal(statements.some(([sql]) => sql.startsWith('insert into plan_rounds')), false);
+    } else {
+      const result = await toggleRedrawVote(5, 1);
+      assert.equal(result.started, true);
+      const [, args] = statements.find(([sql]) => sql.startsWith('insert into plan_rounds'));
+      assert.equal(args[3], 'Houston, TX');
+      assert.equal(args[4], 5);
+      assert.equal(args[6], '$');
+      assert.equal(JSON.parse(args[7])[0].user_id, searchMembers[0].user_id);
+      assert.equal(args[2][0], 'Old venue');
+      assert.equal(statements.at(-1)[0], 'commit');
+    }
+  }
+});
+
+
+test('setup label and current-member guard ignore other members who are still setting up', async () => {
+  assert.equal(finding.setupButtonLabel(false), 'Make my setup');
+  assert.equal(finding.setupButtonLabel(true), 'Edit my setup');
+  const incomplete = group();
+  incomplete.members[0].setup_done = false;
+  assert.equal(finding.mySetupDone(incomplete), false);
+  const blocked = flowFixture([incomplete]);
+  await assert.rejects(blocked.run(), { message: finding.SETUP_REQUIRED_MESSAGE });
+  assert.equal(blocked.calls.length, 1);
+  assert.equal(blocked.events.some(([event]) => event === 'started'), false);
+  const complete = group('voting', 3);
+  complete.members[1].setup_done = false;
+  assert.equal(finding.mySetupDone(complete), true);
+  const allowed = flowFixture([complete]);
+  await allowed.run();
+  assert.ok(allowed.events.some(([event]) => event === 'ready'));
 });

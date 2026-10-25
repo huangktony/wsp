@@ -54,7 +54,7 @@ create table if not exists plans (
 create table if not exists votes (
   plan_id int references plans(id) on delete cascade,
   user_id int references users(id) on delete cascade,
-  value text not null check (value in ('approve','pass')),
+  value text not null check (value in ('approve', 'pass')),
   primary key (plan_id, user_id)
 );
 
@@ -63,7 +63,7 @@ create table if not exists payments (
   round_id int references plan_rounds(id) on delete cascade,
   user_id int references users(id) on delete cascade,
   amount numeric not null,
-  status text not null default 'owed' check (status in ('owed','paid')),
+  status text not null default 'owed' check (status in ('owed', 'paid')),
   unique (round_id, user_id)
 );
 
@@ -86,17 +86,21 @@ create table if not exists stop_skips (
 
 alter table payments add column if not exists transfer_id text;
 
--- A member's own pick of comfort level for this group. null means use the suggestion from their spending (users.budget_tier).
-alter table memberships add column if not exists comfort_tier text check (comfort_tier in ('$','$$','$$$'));
+-- A member's own pick of comfort level for this group.
+-- null means use the suggestion from their spending (users.budget_tier).
+alter table memberships add column if not exists comfort_tier text
+  check (comfort_tier in ('$', '$$', '$$$'));
 
--- A member's vote to throw away a FINAL plan and redraw. Counts only while the round is final and the split requests are not sent.
+-- A member's vote to throw away a FINAL plan and redraw.
+-- Counts only while the round is final and the split requests are not sent.
 create table if not exists redraw_votes (
   round_id int references plan_rounds(id) on delete cascade,
   user_id int references users(id) on delete cascade,
   primary key (round_id, user_id)
 );
 
--- Profile photo: small resized JPEG stored as a data URL (see lib/profile.ts). Null = default initial avatar.
+-- Profile photo: small resized JPEG stored as a data URL (see lib/profile.ts).
+-- Null = default initial avatar.
 alter table users add column if not exists avatar text;
 
 -- Round search context; also available as a standalone migration in db/migrations/.
@@ -109,36 +113,68 @@ alter table plan_rounds add column if not exists search_distance_mi int;
 alter table plan_rounds add column if not exists sample_places boolean;
 alter table plan_rounds add column if not exists search_error text;
 
--- When money moved, so the Spending screen can list it, and when the payer last nudged someone who hasn't paid back.
+-- When money moved, so the Spending screen can list it,
+-- and when the payer last nudged someone who hasn't paid back.
 alter table payments add column if not exists paid_at timestamptz;
 alter table payments add column if not exists reminded_at timestamptz;
 alter table plan_rounds add column if not exists requests_sent_at timestamptz;
 alter table plan_rounds add column if not exists bill_total numeric;
 
--- Snapshot members' search preferences at round creation (server-only; never returned to clients).
-alter table plan_rounds add column if not exists search_settings jsonb;-- WSP Travel: run manually via the documented db:migrate command. No existing data modified.
+-- Snapshot members' search preferences at round creation
+-- (server-only; never returned to clients).
+alter table plan_rounds add column if not exists search_settings jsonb;
+
+-- Nessie's status for the transfer behind a payment
+-- ('completed', or 'pending' until Nessie executes it).
+-- Refreshed when the split screen loads.
+alter table payments add column if not exists transfer_status text;
+
+-- WSP Travel: run manually via the documented db:migrate command.
+-- No existing data modified.
 create table if not exists travel_trips (
- id serial primary key, name text not null, organizer_id int not null references users(id),
- invite_code text not null unique, candidates jsonb not null, revision int not null default 1,
- created_at timestamptz not null default now()
+  id serial primary key,
+  name text not null,
+  organizer_id int not null references users(id),
+  invite_code text not null unique,
+  candidates jsonb not null,
+  revision int not null default 1,
+  created_at timestamptz not null default now()
 );
+
 create table if not exists travel_members (
- trip_id int not null references travel_trips(id) on delete cascade,
- user_id int not null references users(id) on delete cascade,
- airport text, flight_budget numeric check (flight_budget > 0 and flight_budget <= 100000),
- joined_at timestamptz not null default now(), primary key(trip_id,user_id)
+  trip_id int not null references travel_trips(id) on delete cascade,
+  user_id int not null references users(id) on delete cascade,
+  airport text,
+  flight_budget numeric check (
+    flight_budget > 0 and flight_budget <= 100000
+  ),
+  joined_at timestamptz not null default now(),
+  primary key (trip_id, user_id)
 );
+
 create table if not exists travel_comparisons (
- id serial primary key, trip_id int not null references travel_trips(id) on delete cascade,
- revision int not null, status text not null check (status in ('generating','voting','final','vetoed','failed','stale')),
- options jsonb not null default '[]', member_ids int[] not null, winner_id int,
- error text, created_at timestamptz not null default now(), checked_at timestamptz,
- expires_at timestamptz
+  id serial primary key,
+  trip_id int not null references travel_trips(id) on delete cascade,
+  revision int not null,
+  status text not null check (
+    status in ('generating', 'voting', 'final', 'vetoed', 'failed', 'stale')
+  ),
+  options jsonb not null default '[]',
+  member_ids int[] not null,
+  winner_id int,
+  error text,
+  created_at timestamptz not null default now(),
+  checked_at timestamptz,
+  expires_at timestamptz
 );
-create index if not exists travel_comparisons_trip on travel_comparisons(trip_id,id desc);
+
+create index if not exists travel_comparisons_trip
+  on travel_comparisons (trip_id, id desc);
+
 create table if not exists travel_votes (
- comparison_id int not null references travel_comparisons(id) on delete cascade,
- user_id int not null references users(id) on delete cascade,
- option_id int not null, value text not null check(value in ('approve','veto')),
- primary key(comparison_id,user_id,option_id)
+  comparison_id int not null references travel_comparisons(id) on delete cascade,
+  user_id int not null references users(id) on delete cascade,
+  option_id int not null,
+  value text not null check (value in ('approve', 'veto')),
+  primary key (comparison_id, user_id, option_id)
 );

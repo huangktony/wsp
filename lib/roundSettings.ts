@@ -7,7 +7,7 @@ export type SearchMember = {
 /** Canonical snapshot: includes every member so joining, leaving, or editing any setting invalidates it. */
 export function roundSettings(members: SearchMember[]) {
   return members.map(m => ({
-    user_id: m.user_id, availability: [...(m.availability ?? [])].sort(), interests: [...(m.interests ?? [])].sort(),
+    included: !!m.availability?.length, user_id: m.user_id, availability: [...(m.availability ?? [])].sort(), interests: [...(m.interests ?? [])].sort(),
     max_distance_mi: m.max_distance_mi, comfort_tier: m.comfort_tier ?? null, budget_tier: m.budget_tier ?? null,
   })).sort((a, b) => a.user_id - b.user_id);
 }
@@ -19,6 +19,6 @@ export function searchPreferences(members: SearchMember[]) {
   const distances = ready.map(m => m.max_distance_mi).filter(n => Number.isFinite(n) && n > 0);
   return {
     distance: distances.length ? Math.min(...distances) : null,
-    tier: lowestTier(members.map(m => isTier(m.comfort_tier) ? m.comfort_tier : m.budget_tier)),
+    tier: lowestTier(ready.map(m => isTier(m.comfort_tier) ? m.comfort_tier : m.budget_tier)),
   };
 }

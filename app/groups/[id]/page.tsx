@@ -1,6 +1,6 @@
 "use client";
-
-import { useSetupGate } from "@/lib/useSetupGate";
+import { InclusionBanner, RerunPlans } from "@/components/RoundInclusion";
+import { groupHomeRedirect, groupHomeAction, mySetupDone, setupButtonLabel, SETUP_REQUIRED_MESSAGE } from "@/lib/finding";
 import { useFindingRedirect } from "@/lib/useFindingRedirect";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,12 +34,32 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const { data: g, error, reload } = useApi<any>(`/api/groups/${id}`, 4000, true);
   useFindingRedirect(id, g);
-  useSetupGate(id);
   const router = useRouter();
+  useEffect(() => {
+    const destination = groupHomeRedirect(g ? { ...g, id } : null, new URLSearchParams(window.location.search).get("home"));
+    if (destination) router.replace(destination);
+  }, [g, id, router]);
   const [confirm, setConfirm] = useState<"delete" | "leave" | null>(null);
   const [newOwner, setNewOwner] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [setupError, setSetupError] = useState("");
+  const setupComplete = mySetupDone(g);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("setupRequired")) {
+      setSetupError(SETUP_REQUIRED_MESSAGE);
+      url.searchParams.delete("setupRequired");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [id]);
+  useEffect(() => { if (setupComplete) setSetupError(""); }, [setupComplete]);
+  const checkFinding = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!setupComplete) {
+      event.preventDefault();
+      setSetupError(SETUP_REQUIRED_MESSAGE);
+    }
+  };
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,12 +101,11 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   const isOwner = g?.isCreator === true;
   const soloOwner = isOwner && others.length === 0;
   const needsNewSearch = g?.finding?.needsNewSearch === true || g?.finding?.cityChanged === true;
+  const action = groupHomeAction(g?.finding?.round, g?.finding?.planCount ?? 0);
   const open = g?.roundOpen === true;
   const final = g?.round?.status === "final";
-
-  // What the progress card is counting. The ready count itself is unchanged.
   const phase = final ? "final plan picked" : open ? "voting" : g?.round?.status === "generating" ? "finding plans" : "setup";
-  const pending = members.filter((member) => open ? !member.has_voted : !member.setup_done);
+  const pending = members.filter((member) => open ? g.inclusion?.includedMemberIds.includes(member.id) && !member.has_voted : !member.setup_done);
   const total = open ? g.memberCount : members.length;
   const ready = open ? g.voted : members.length - pending.length;
   const progress = total ? Math.round(ready / total * 100) : 0;
@@ -115,7 +134,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
   }
 
   return (
-    <main className={`${inter.className} mx-auto flex min-h-[100svh] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
+    <main className={`${inter.className} mx-auto flex min-h-[calc(100svh-var(--tab-bar-height))] w-full max-w-[390px] flex-col gap-[18px] bg-surface px-6 pb-7 pt-6 text-indigo`}>
       <header className="flex flex-col gap-1">
         <BackButton href="/groups" className="mb-3" />
         {g && <>
@@ -136,11 +155,12 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
       )) : <>
         <section aria-label="Group readiness" className="flex flex-col gap-2.5 rounded-2xl border border-azure bg-pistachio p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[15px] font-bold">{ready} of {total} ready <span className="text-[13px] font-normal text-secondary">· {phase}</span></span>
+            <span className="text-[15px] font-bold">{ready} of {total} {open ? "voted" : "ready"} <span className="text-[13px] font-normal text-secondary">· {phase}</span></span>
           </div>
           <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${ready} of ${total} members ${open ? "have voted" : "ready"}`} className="h-3 overflow-hidden rounded-full bg-surface">
             <div className="h-full rounded-full bg-orchid transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
           </div>
+          {open && <InclusionBanner inclusion={g.inclusion} />}
         </section>
         {g.invite_code && <div>
           <section aria-label="Invite code" className="flex items-center justify-between gap-2 rounded-[20px] bg-panel px-5 py-[18px] text-white">
@@ -159,30 +179,33 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
               <li key={member.id} className="flex items-center gap-3 border-b border-azure py-3 last:border-b-0">
                 <Avatar name={member.name} src={member.avatar} className={`h-10 w-10 text-base ${avatarColors[index % avatarColors.length]}`} />
                 <span className="min-w-0 flex-1 break-words text-base font-bold">{memberName(member)}</span>
-                <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${(open ? member.has_voted : member.setup_done) ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{open ? (member.has_voted ? "Voted" : "Not voted yet") : (member.setup_done ? "Ready" : "Setting up")}</span>
+                <span className={`shrink-0 rounded-xl px-2.5 py-1 text-[13px] font-bold ${(open ? member.has_voted : member.setup_done) ? "bg-peach text-indigo" : "bg-orchid text-orchidink"}`}>{open ? (!g.inclusion?.includedMemberIds.includes(member.id) ? "Not included" : member.has_voted ? "Voted" : "Not voted yet") : (member.setup_done ? "Ready" : "Setting up")}</span>
               </li>
             ))}
           </ul>
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
           <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
+          {!final && <RerunPlans id={id} inclusion={g.inclusion} setupComplete={setupComplete} />}
           {!final && g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
-          {open && !needsNewSearch && <Link href={`/groups/${id}/plans`} className={primary}>Vote on plans</Link>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}
-          {!final && (!open || needsNewSearch) && (
-            <Link href={`/groups/${id}/finding${needsNewSearch ? "?new=1" : ""}`} className={primary}>
-              {needsNewSearch ? "Find new plans" : "Find plans"}
-            </Link>
-          )}
+          {setupError && <div role="alert" className="rounded-[14px] bg-[#F3A5BC] p-3 text-sm text-[#7A1A3F]">
+            {setupError} <Link href={`/groups/${id}/setup`} className={`font-bold underline ${focus}`}>Make my setup</Link>
+          </div>}
+          {!final && <Link onClick={action.destination === "finding" ? checkFinding : undefined} href={`/groups/${id}/${action.destination}${action.fresh ? "?new=1" : ""}`} className={primary}>{action.label}</Link>}
+          {!final && needsNewSearch && action.destination === "plans" && <Link onClick={checkFinding} href={`/groups/${id}/finding`} className={primary}>Find plans</Link>}
           {final && <RedrawVote id={id} redraw={g.redraw} onChanged={reload} />}
-          {!final && <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] border border-outline bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>Edit my setup</Link>}
+          {!final && <Link href={`/groups/${id}/setup`} className={`flex min-h-[50px] w-full items-center justify-center rounded-[14px] ${setupComplete ? "border border-outline" : "border-2 border-[#28536B]"} bg-transparent px-4 py-3 text-base font-semibold ${focus}`}>{setupButtonLabel(setupComplete)}</Link>}
           {confirm === "delete" && <div role="alertdialog" aria-label="Confirm delete" className="flex flex-col gap-2.5 rounded-2xl border border-maroon p-4">
             <p className="text-[15px] font-bold">Delete {g.name}? This removes the group, plans, and votes for everyone.</p>
             <button type="button" disabled={busy} onClick={() => run(() => api(`/api/groups/${id}`, "DELETE"))} className={danger}>Delete group</button>
             <button type="button" disabled={busy} onClick={() => setConfirm(null)} className={quiet}>Cancel</button>
           </div>}
           {confirm === "leave" && <div role="alertdialog" aria-label="Confirm leave" className="flex flex-col gap-2.5 rounded-2xl border border-outline p-4">
-            {isOwner ? <>
+            {g?.myDues > 0 ? <>
+              <p role="alert" className="text-[15px] font-bold">You owe ${g.myDues.toFixed(2)} in this group. Pay your dues before leaving.</p>
+              <Link href={`/groups/${id}/final`} className={primary}>Pay now</Link>
+            </> : isOwner ? <>
               <p className="text-[15px] font-bold">Pick a new owner before you leave {g.name}.</p>
               <ul className="flex flex-col gap-2">
                 {others.map((member) => (

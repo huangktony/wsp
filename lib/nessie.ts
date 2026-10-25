@@ -232,3 +232,45 @@ export async function recordPayback(p: { payId: number; fromAccount: string | nu
     await nj(`/accounts/${toAccount}/deposits`, { method: "POST", body: JSON.stringify({ ...common, description: splitDescription({ payId, counterpart: fromAccount, cents, label }) }) });
   }
 }
+
+/** A failure whose message is safe to show the member (missing account, insufficient funds). */
+export class PaymentError extends Error {}
+
+const transferDescription = (group: string, payId: number, amount: number) => `SideQuest: ${group.replace(/\s+/g, " ").trim().slice(0, 40)} (pay ${payId}, $${amount.toFixed(2)})`;
+const transferPayId = (description?: string) => Number(/\(pay (\d+),/.exec(description ?? "")?.[1]) || null;
+
+/**
+ * Pays one debt: a transfer on the member's account, plus the withdrawal and deposit that put it on both ledgers (recordPayback).
+ * The sandbox cannot name a payee on a transfer, so the transfer is the member's one-sided record and the two ledger rows are what the
+ * payer sees as money received. Idempotent per payment: an existing transfer for this payment is reused, so a retry after a partial
+ * failure never sends a second one. Throws PaymentError for problems the member can act on, anything else for outages.
+ * Without a live Nessie account on both sides the payment is recorded only in our database (id "local-<payId>").
+ */
+export async function sendPayment(p: { payId: number; fromAccount: string | null; toAccount: string | null; amount: number; groupName: string }): Promise<{ transferId: string; status: string }> {
+  const { payId, fromAccount, toAccount, amount, groupName } = p;
+  if (live() && (!fromAccount || !toAccount)) throw new PaymentError(!fromAccount ? "Link your bank account before paying." : "The organizer hasn't linked a bank account yet.");
+  if (!isLiveAccount(fromAccount) || !isLiveAccount(toAccount)) return { transferId: `local-${payId}`, status: "completed" };
+  const account = await nj(`/accounts/${fromAccount}`);
+  if (typeof account.balance === "number" && account.balance < amount) throw new PaymentError(`Insufficient funds: your account has $${account.balance.toFixed(2)}.`);
+  const existing = (await njList(`/accounts/${fromAccount}/transfers`)).find((t) => transferPayId(t.description) === payId);
+  let transferId: string = existing?._id, status: string = existing?.status;
+  if (!transferId) {
+    // Verified body (nessie-probe.ts): exactly these four fields. Nessie truncates the amount, so the exact cents ride in the description.
+    const c = await nj(`/accounts/${fromAccount}/transfers`, {
+      method: "POST",
+      body: JSON.stringify({ transaction_date: new Date().toISOString().slice(0, 10), status: "completed", amount: Math.max(1, Math.round(amount)), description: transferDescription(groupName, payId, amount) }),
+    });
+    transferId = c.objectCreated?._id;
+    status = c.objectCreated?.status ?? "completed";
+    if (!transferId) throw new Error("nessie did not return a transfer id");
+  }
+  await recordPayback({ payId, fromAccount, toAccount, amount, label: `${groupName} hangout` });
+  return { transferId, status: status ?? "completed" };
+}
+
+/** Where Nessie says a transfer stands ("pending", "completed", ...), or null if it can't be found. */
+export async function transferStatus(accountId: string, transferId: string): Promise<string | null> {
+  if (!isLiveAccount(accountId)) return null;
+  const hit = (await njList(`/accounts/${accountId}/transfers`)).find((t) => t._id === transferId);
+  return hit?.status ?? null;
+}

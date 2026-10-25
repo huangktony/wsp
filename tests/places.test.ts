@@ -2,7 +2,7 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { estimatePlace, parseRealPrice, planLevel } from "../lib/price";
 import { findPlaces, placeFromResult, queryFor, type Place } from "../lib/serpapi";
-import { mockPlans, withinBudget } from "../lib/meta";
+import { mockPlans, withinBudget } from "../lib/gemini";
 import type { Tier } from "../lib/tiers";
 
 const previousKey = process.env.SERPAPI_KEY;

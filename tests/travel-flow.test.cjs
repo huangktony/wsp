@@ -81,7 +81,7 @@ test('dashboard partitions voting trips with no inline create or join; demo rema
 const tick=()=>new Promise(r=>setTimeout(r,0));
 const typeName=(h,value='Reunion')=>nodes(h.render()).find(n=>n.type==='input'&&n.props['aria-label']==='Trip name').props.onChange({target:{value}});
 const createForm=tree=>nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip');
-const joinGroup=tree=>nodes(tree).find(n=>n.props?.role==='group'&&n.props['aria-label']==='Join trip');
+const joinGroup=tree=>nodes(tree).find(n=>n.type==='section'&&n.props['aria-labelledby']==='join-trip-heading');
 const joinButton=tree=>nodes(tree).find(n=>n.type==='button'&&text(n)==='Join');
 const typeCode=(h,code,complete)=>nodes(h.render()).find(n=>n.type==='invite').props.onChange(code,complete);
 test('create goes to private setup; no top mode switches remain and bottom Travel navigation stays',async()=>{
@@ -96,7 +96,8 @@ test('Start a trip mirrors Start a group: back to /travel, title, trip name and 
   assert.equal(text(nodes(tree).find(n=>n.type==='h1')),'Start a trip');
   assert.ok(nodes(createForm(tree)).some(n=>n.type==='editor'),'dates are in the create form');
   assert.equal(nodes(joinGroup(tree)).some(n=>n.type==='editor'),false);
-  assert.ok(text(tree).includes('OR JOIN WITH A CODE'));
+  assert.equal(text(nodes(joinGroup(tree)).find(n=>n.type==='h2')),'OR JOIN WITH A CODE','a plain label at the top of the join card, no divider lines');
+  assert.match(joinGroup(tree).props.className,/rounded-3xl bg-pistachio p-5/);assert.match(joinButton(tree).props.className,/\bbg-panel\b/);assert.match(joinButton(tree).props.className,/\btext-white\b/);assert.ok(!/bg-pistachio/.test(joinButton(tree).props.className));
   const invite=nodes(tree).find(n=>n.type==='invite');assert.equal(invite.props.value,'TRIP-');assert.equal(invite.props.spec,inviteLib.TRAVEL_CODE);
   assert.ok(nodes(tree).some(n=>n.type==='button'&&text(n)==='Create trip'&&n.props.form==='create-trip'),'sticky Create trip button submits the create form');
 });

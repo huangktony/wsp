@@ -22,7 +22,7 @@ export type FindingState = {
 };
 
 /** Availability is the setup requirement; interests and bank linking are optional. */
-export function shouldFindPlans(group: { members: { setup_done: boolean }[]; finding?: FindingState } | null, previous?: FindingState | null) {
+export function shouldFindPlans(group: { me?: number; members: { id?: number; setup_done: boolean }[]; finding?: FindingState } | null, previous?: FindingState | null) {
   if (!group?.finding || !group.members.length || !group.members.every(member => member.setup_done)) return false;
   const current = group.finding;
   if (current.cityChanged || current.needsNewSearch) return false; // The member explicitly starts a replacement round.
@@ -47,4 +47,23 @@ export function groupHomeAction(round: { status: string } | null | undefined, pl
   if (round.status === "vetoed") return { label: "Find new plans", destination: "finding", fresh: true, final: false } as const;
   if (round.status === "voting") return { label: "Vote on plans", destination: "plans", fresh: false, final: false } as const;
   return { label: "Find plans", destination: "finding", fresh: false, final: false } as const;
+}
+
+export const SETUP_REQUIRED_MESSAGE = "You haven't made your setup yet. Make your setup first, then find plans.";
+
+export function mySetupDone(group: { me?: number; members: { id?: number; setup_done: boolean }[] } | null | undefined) {
+  return group?.me != null && group.members.some(member => member.id === group.me && member.setup_done);
+}
+
+export function setupButtonLabel(complete: boolean) {
+  return complete ? "Edit my setup" : "Make my setup";
+}
+
+export type GroupDestination = { id: number | string; round_status?: string | null; round?: { status: string } | null };
+export function groupHref(group: GroupDestination) {
+  const status = group.round_status ?? group.round?.status;
+  return `/groups/${group.id}${status === "final" ? "/final" : status === "voting" ? "/plans" : ""}`;
+}
+export function groupHomeRedirect(group: GroupDestination | null | undefined, home?: string | null) {
+  return group && home !== "1" && (group.round_status ?? group.round?.status) === "final" ? groupHref(group) : null;
 }

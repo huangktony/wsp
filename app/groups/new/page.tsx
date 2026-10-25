@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Page } from "@/components/Page";
 import { CityCombobox } from "@/components/CityCombobox";
 import { InviteCodeInput } from "@/components/InviteCodeInput";
+import { groupHref } from "@/lib/finding";
 import { api } from "@/lib/client";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -23,8 +24,9 @@ export default function NewGroup() {
     setAction(source);
     setBusy(true);
     setErr("");
-    return p.then((d) => {
-      r.push(`/groups/${d.id}`);
+    return p.then(async (d) => {
+      const group = await api(`/api/groups/${d.id}`);
+      r.push(groupHref({ ...group, id: d.id }));
     }).catch((e) => {
       setErr(e.message);
       setBusy(false);

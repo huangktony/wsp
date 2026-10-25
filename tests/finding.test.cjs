@@ -21,6 +21,9 @@ function load(file, mocks = {}, globals = {}) {
     ...globals,
     require(name) {
       if (name in mocks) return mocks[name];
+      if (name === "@/components/RedrawVote") return { RedrawVote: "redraw" };
+      if (name === './roundParticipation' || name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
+      if (name === '@/components/RoundInclusion') return { InclusionBanner: 'banner', RerunPlans: 'rerun' };
       throw Error(`Unmocked import: ${name}`);
     },
   });
@@ -42,7 +45,8 @@ const searchMembers = [{
 
 const group = (status = null, planCount = 0) => ({
   groupTier: '$',
-  members: [{ setup_done: true }, { setup_done: true }],
+  me: 1,
+  members: [{ id: 1, setup_done: true }, { id: 2, setup_done: true }],
   finding: {
     round: status ? { id: 10, status } : null,
     memberCount: 2,
@@ -113,6 +117,7 @@ function flowFixture(responses) {
     now: () => time,
   };
   const { runFinding } = load('lib/findingFlow.ts', {
+    './finding': finding,
     './client': {
       api() { throw Error('unexpected live call'); },
     },
@@ -360,6 +365,7 @@ test('screen times out at 30 seconds, offers retry, and cancels work on unmount'
     },
     'next/link': { default: 'a' },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/finding': finding,
     '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': {
       useRouter: () => ({
@@ -433,6 +439,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
     },
     'next/link': { default: 'a' },
     'next/font/google': { Inter: () => ({ className: '' }) },
+    '@/lib/finding': finding,
     '@/lib/useSetupGate': { useSetupGate() {} },
     'next/navigation': {
       useRouter: () => ({
@@ -473,9 +480,7 @@ test('See plans stays disabled until ready, then only a click pushes the plans r
 
   let tree = render();
   effects[0]();
-  assert.equal(button(tree).props.disabled, true);
-  assert.equal(button(tree).props['aria-disabled'], true);
-  button(tree).props.onClick();
+  assert.equal(tree, null, 'do not show the finding screen before checking setup');
   assert.equal(navigation.length, 0);
   callbacks.update(group('voting', 3));
   callbacks.started();
@@ -516,7 +521,8 @@ test('loading preview is gated, makes no API calls, runs ten seconds, and cleans
       },
       'next/link': { default: 'a' },
       'next/font/google': { Inter: () => ({ className: '' }) },
-      '@/lib/useSetupGate': { useSetupGate() {} },
+      '@/lib/finding': finding,
+    '@/lib/useSetupGate': { useSetupGate() {} },
       'next/navigation': {
         useRouter: () => ({
           push() { throw Error('Unexpected navigation'); },
@@ -879,7 +885,7 @@ test('merged plans POST rejects unfinished setup before claiming or generating a
   });
   const response = await POST({}, { params: Promise.resolve({ id: '5' }) });
   assert.equal(response.status, 409);
-  assert.equal(response.error, 'finish your setup first');
+  assert.equal(response.error, finding.SETUP_REQUIRED_MESSAGE);
 });
 
 test('editing any search setting creates a fresh round with current Houston distance and tier', async () => {
@@ -1089,4 +1095,23 @@ test('majority redraw preserves current search snapshots instead of creating a l
       assert.equal(statements.at(-1)[0], 'commit');
     }
   }
+});
+
+
+test('setup label and current-member guard ignore other members who are still setting up', async () => {
+  assert.equal(finding.setupButtonLabel(false), 'Make my setup');
+  assert.equal(finding.setupButtonLabel(true), 'Edit my setup');
+  const incomplete = group();
+  incomplete.members[0].setup_done = false;
+  assert.equal(finding.mySetupDone(incomplete), false);
+  const blocked = flowFixture([incomplete]);
+  await assert.rejects(blocked.run(), { message: finding.SETUP_REQUIRED_MESSAGE });
+  assert.equal(blocked.calls.length, 1);
+  assert.equal(blocked.events.some(([event]) => event === 'started'), false);
+  const complete = group('voting', 3);
+  complete.members[1].setup_done = false;
+  assert.equal(finding.mySetupDone(complete), true);
+  const allowed = flowFixture([complete]);
+  await allowed.run();
+  assert.ok(allowed.events.some(([event]) => event === 'ready'));
 });

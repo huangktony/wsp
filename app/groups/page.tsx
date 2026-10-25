@@ -6,6 +6,8 @@ import { Inter } from "next/font/google";
 import { Page } from "@/components/Page";
 import { Smiley } from "@/components/Smiley";
 import { useApi } from "@/lib/client";
+import { groupHref } from "@/lib/finding";
+import { splitGroupStories, groupStoryColor, needsVoteBadge, groupStoryLabel } from "@/lib/groupStories";
 import { formatMoney } from "@/lib/format";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] });
@@ -48,10 +50,8 @@ function GroupsContent() {
   const results = data?.map((group, index) => ({ group, index })).filter(({ group }) =>
     !term || [group.name, group.city, group.status].some((value) => typeof value === "string" && value.toLowerCase().includes(term))
   );
-  const featured = (results?.find(({ group }) => group.status === "VOTING OPEN") ?? results?.[0])?.group;
-
-  const needsVote = featured?.status === "VOTING OPEN" && !featured.my_voted;
-  const canVote = featured?.status === "VOTING OPEN";
+  const { open, other } = splitGroupStories((results ?? []).map(({ group }) => group));
+  const featured = other[0];
   return (
     <Page variant="plain">
       <div className={`${inter.className} bg-surface text-indigo`}>
@@ -75,22 +75,27 @@ function GroupsContent() {
         </header>
 
         <p className="sr-only" aria-live="polite" aria-atomic="true">{data && !error ? `${results?.length ?? 0} groups found` : ""}</p>
-        <nav aria-label="Your groups" className="flex gap-4 overflow-x-auto px-6 pb-4 pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {!searching && <Link href="/groups/new" className={`flex w-[68px] shrink-0 flex-col items-center gap-1.5 rounded-xl text-xs font-semibold ${focus}`}>
-            <span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-outline">
+        {open.length > 0 && <h2 className="mb-1 flex items-center gap-2 px-6 font-[inherit] text-sm font-bold text-[#35607A]">
+          Current votes
+          <span className="rounded-full bg-[#CBE6C7] px-2 py-0.5 text-xs font-extrabold text-[#28536B]">{open.length}</span>
+        </h2>}
+        <section aria-label="Current votes" className={`flex snap-x snap-mandatory gap-4 scroll-px-6 overflow-x-auto px-6 pb-4 ${open.length ? "" : "pt-1.5"} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+          <Link href="/groups/new" className={`flex w-16 shrink-0 flex-col items-center gap-1.5 snap-start rounded-xl text-xs font-bold ${focus}`}>
+            <span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-[#6F98A2]">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             </span>
             New
-          </Link>}
-          {results?.map(({ group, index }) => (
-            <Link key={group.id} href={`/groups/${group.id}`} aria-label={group.name} className={`flex w-[68px] shrink-0 flex-col items-center gap-1.5 rounded-xl text-xs ${index === 0 ? "font-bold" : "font-semibold"} ${focus}`}>
-              <span className={`h-16 w-16 rounded-full border-[3px] p-[3px] ${index === 0 ? "border-matcha" : "border-azure"}`}>
-                <span className={`flex h-full w-full items-center justify-center rounded-full text-xl font-extrabold ${avatarColors[index % avatarColors.length]}`}>{initials(group.name)}</span>
+          </Link>
+          {open.map((group) => (
+            <Link key={group.id} href={groupHref(group)} aria-label={groupStoryLabel(group)} className={`flex w-16 shrink-0 snap-start flex-col items-center gap-1.5 rounded-xl text-xs font-bold ${focus}`}>
+              <span className="relative h-16 w-16 rounded-full border-[3px] border-[#8FB78F] p-[3px]">
+                <span className={`flex h-full w-full items-center justify-center rounded-full text-xl font-extrabold ${groupStoryColor(group.id)}`}>{initials(group.name)}</span>
+                {needsVoteBadge(group) && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-[14px] w-[14px] rounded-full border-2 border-white bg-[#F3A5BC]" />}
               </span>
-              <span className="w-full truncate text-center">{group.name.trim().split(/\s+/)[0]}</span>
+              <span className="w-full max-w-[68px] truncate text-center">{group.name}</span>
             </Link>
           ))}
-        </nav>
+        </section>
 
         <div className="flex flex-col gap-4 px-6">
           {error && <p role="alert" className="rounded-[20px] border border-orchid bg-surface p-4 text-sm text-maroon">{error}</p>}
@@ -105,25 +110,26 @@ function GroupsContent() {
               </Link>
             ))}
           </section>}
+          {open.length > 0 && <h2 className="font-[inherit] text-sm font-bold text-[#35607A]">All groups</h2>}
           {featured && (
-            <article className={`relative flex flex-col rounded-3xl ${needsVote ? "bg-orchid/40" : "bg-pistachio"}`}>
-              <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? "bg-orchid" : "bg-matcha"} px-[18px] py-4`}>
+            <article className="relative flex flex-col rounded-3xl bg-pistachio">
+              <div className="flex h-[84px] items-start justify-between rounded-t-3xl bg-matcha px-[18px] py-4">
                 {featured.status && <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{featured.status}</span>}
-                <Smiley size={48} fill={needsVote ? "fill-pistachio" : undefined} />
+                <Smiley size={48} />
               </div>
               <div className="flex flex-col gap-1.5 px-[18px] pb-[18px] pt-4">
                 <h2 className="font-[inherit] text-[22px] font-extrabold leading-tight tracking-[-0.5px]">
-                  <Link href={`/groups/${featured.id}`} className={`after:absolute after:inset-0 after:rounded-3xl ${focus}`}>{featured.name}</Link>
+                  <Link href={groupHref(featured)} className={`after:absolute after:inset-0 after:rounded-3xl ${focus}`}>{featured.name}</Link>
                 </h2>
                 <p className="text-sm text-secondary">{meta(featured)}</p>
                 <div className="mt-1.5 flex items-center justify-end">
-                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>{needsVote || !canVote ? "Vote now" : "Change vote"} <span aria-hidden="true">→</span></Link>
+                  <Link href={groupHref(featured)} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-panel px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>View group <span aria-hidden="true">→</span></Link>
                 </div>
               </div>
             </article>
           )}
-          {results?.map(({ group, index }) => group.id !== featured?.id && (
-            <Link key={group.id} href={`/groups/${group.id}`} className={`flex items-center gap-3.5 rounded-[20px] border border-azure bg-surface px-[18px] py-4 ${focus}`}>
+          {other.map((group, index) => group.id !== featured?.id && (
+            <Link key={group.id} href={groupHref(group)} className={`flex flex-wrap items-center gap-3.5 rounded-[20px] border border-azure bg-surface px-[18px] py-4 ${focus}`}>
               <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-extrabold ${avatarColors[index % avatarColors.length]}`}>{initials(group.name)}</span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <h2 className="break-words font-[inherit] text-[17px] font-extrabold leading-tight">{group.name}</h2>

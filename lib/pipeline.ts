@@ -1,3 +1,4 @@
+import { includedVoteSql } from "./roundParticipation";
 import { roundSettings, searchPreferences, settingsChanged } from "./roundSettings";
 import { bestSlot, resolveRoundCity, sameCity } from "./finding";
 export { bestSlot } from "./finding";
@@ -66,7 +67,7 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
     );
 
     const last = (await c.query(
-      "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1",
+      "select id,status,attempt,excluded,to_jsonb(r)->'search_settings' search_settings,to_jsonb(r)->>'search_city' search_city,(to_jsonb(r)->>'sample_places')::boolean sample_places from plan_rounds r where group_id=$1 and status<>'failed' order by id desc limit 1 for update",
       [groupId],
     )).rows[0];
 
@@ -104,6 +105,7 @@ export async function startRound(groupId: number): Promise<{ roundId: number; st
       [groupId, attempt, excluded, city, preferences.distance, sample, preferences.tier, JSON.stringify(settings)],
     );
 
+    if (last?.status === "voting") await c.query("update plan_rounds set status='replaced' where id=$1 and status='voting'", [last.id]);
     await c.query("commit");
     return { roundId: r.rows[0].id, status: "generating", created: true };
   } catch (e) {
@@ -277,7 +279,7 @@ export async function pickWinner(roundId: number) {
   const rows = await q<any>(
     `select p.id, p.est_cost_per_person::float cost,
        count(v.*) filter (where v.value='approve')::int approves, count(v.*) filter (where v.value='pass')::int vetoes
-     from plans p left join votes v on v.plan_id=p.id where p.round_id=$1 group by p.id order by approves desc, vetoes asc, cost asc, p.id asc`,
+     from plans p join plan_rounds r on r.id=p.round_id left join votes v on v.plan_id=p.id and ${includedVoteSql("r", "v.user_id")} where p.round_id=$1 group by p.id order by approves desc, vetoes asc, cost asc, p.id asc`,
     [roundId],
   );
 
@@ -296,8 +298,8 @@ export async function settleRound(roundId: number, force = false): Promise<strin
   const r = await q1<any>(
     `select r.id,r.status,r.group_id,(r.vote_deadline < now()) expired,
        (select count(*)::int from plans where round_id=r.id) plans,
-       (select count(*)::int from memberships where group_id=r.group_id) members,
-       (select count(*)::int from votes v join plans p on p.id=v.plan_id join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where p.round_id=r.id) votes
+       (select count(*)::int from memberships m where group_id=r.group_id and ${includedVoteSql()}) members,
+       (select count(*)::int from votes v join plans p on p.id=v.plan_id join memberships m on m.user_id=v.user_id and m.group_id=r.group_id where p.round_id=r.id and ${includedVoteSql()}) votes
      from plan_rounds r where r.id=$1`,
     [roundId],
   );

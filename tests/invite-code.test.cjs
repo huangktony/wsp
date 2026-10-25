@@ -13,6 +13,7 @@ function load(file, mocks) {
     exports,
     require: (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
       if (name === 'zod') return require('zod');
       throw new Error(`Unexpected import (no database access allowed): ${name}`);
     },

@@ -102,7 +102,7 @@ function GroupsContent() {
                 </h2>
                 <p className="text-sm text-secondary">{meta(featured)}</p>
                 <div className="mt-1.5 flex items-center justify-end">
-                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 py-2 text-sm font-bold text-maroon ${focus}`}>Vote now</Link>
+                  <Link href={`/groups/${featured.id}/plans`} className={`relative z-10 flex min-h-11 items-center gap-1.5 rounded-full bg-indigo px-[18px] py-2 text-sm font-bold text-white shadow-md hover:brightness-90 active:brightness-75 ${focus}`}>Vote now <span aria-hidden="true">→</span></Link>
                 </div>
               </div>
             </article>

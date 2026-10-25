@@ -5,7 +5,7 @@ import { pool, q, q1 } from '../db';
 import type { PoolClient } from 'pg';
 import { randomBytes } from 'node:crypto';
 import { loadSpending, isLiveAccount } from '../nessie';
-import { availableFunds, type Financial } from './finance';
+import { availableFunds, budgetSuggestions, type Financial } from './finance';
 import { compareFlights } from './flights';
 import { validAirport, validateSetup, publicOptions, tally, type Option, type Ballot } from './core';
 import { ballotState, ballotProgress, majority, shouldClose, type BallotState } from './ballot';
@@ -117,10 +117,13 @@ export async function joinTrip(uid: number, body: any) {
   } catch (e) { await c.query('rollback').catch(() => {}); throw e; } finally { c.release(); }
 }
 export async function ownSetup(id: number, uid: number) {
-  return locked(id, uid, async c => {
+  const mine = await locked(id, uid, async c => {
     const me = await one(c, 'select airport,flight_budget::float budget from travel_members where trip_id=$1 and user_id=$2', [id, uid]);
     return { airport: me.airport, budget: me.budget };
   });
+  // Your own money only: this goes back to you and is never part of a group payload. The Nessie call stays outside the trip lock.
+  const funds = await financial({ user_id: uid, nessie_account_id: (await q1<{ nessie_account_id: string | null }>('select nessie_account_id from users where id=$1', [uid]))?.nessie_account_id ?? null });
+  return { ...mine, suggestions: funds.source === 'nessie-sandbox' ? budgetSuggestions(funds.available) : null };
 }
 export async function saveSetup(id: number, uid: number, body: any) {
   // No user id accepted: caller can only edit their authenticated membership.
@@ -137,7 +140,8 @@ export async function saveDates(id: number, uid: number, body: any) {
   return locked(id, uid, async (c, trip) => {
     organizer(trip, uid);
     if ((await savedFinal(c, id))?.ballot.finalConfirmedAt) throw new TravelError('The meeting place is confirmed. Shared dates are locked.', 409);
-    if (JSON.stringify(options) !== JSON.stringify(trip.candidates)) {
+    // Compare the normalized saved value, so a trip saved before scope existed is not 'changed' by being re-saved as National.
+    if (JSON.stringify(options) !== JSON.stringify(readDates(trip.candidates))) {
       await c.query('update travel_trips set candidates=$2::jsonb where id=$1', [id, JSON.stringify(options)]);
       await invalidate(c, id);
     }
@@ -179,7 +183,7 @@ export async function readTrip(id: number, uid: number) {
     };
   });
 }
-export async function financial(m: Member): Promise<Financial> {
+export async function financial(m: Pick<Member, 'user_id' | 'nessie_account_id'>): Promise<Financial> {
   const checkedAt = Date.now();
   if (!m.nessie_account_id) return { available: null, checkedAt, source: 'unknown' };
   if (!isLiveAccount(m.nessie_account_id)) return { available: null, checkedAt, source: 'simulated' };

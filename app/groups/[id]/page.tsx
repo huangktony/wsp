@@ -179,7 +179,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           </section>
           {copyError && <p role="status" className="mt-2 text-sm text-maroon">{copyError}</p>}
         </div>}
-        <section aria-labelledby="members-heading">
+        <section aria-labelledby="members-heading" className="glass !px-4 !py-3">
           <h2 id="members-heading" className="pb-1.5 font-[inherit] text-sm font-bold text-secondary">Members</h2>
           <ul>
             {members.map((member, index) => (
@@ -192,7 +192,7 @@ export default function GroupHome({ params }: { params: Promise<{ id: string }> 
           </ul>
         </section>
         <div className="mt-auto flex flex-col gap-2.5">
-          <p className="text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
+          <p className="glass !p-3 text-center text-[13px] leading-[1.4] text-secondary">{helper}</p>
           {!final && <RerunPlans id={id} inclusion={g.inclusion} setupComplete={setupComplete} />}
           {!final && g.finding?.settingsChanged && <p className="text-sm text-secondary">Settings changed. Find new plans to update.</p>}
           {final && <Link href={`/groups/${id}/final`} className={primary}>See final plan</Link>}

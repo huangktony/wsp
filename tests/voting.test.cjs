@@ -223,6 +223,7 @@ test('voting UI updates participation immediately, confirms selections, and roll
     'next/navigation': { useRouter: () => ({ replace() {} }) },
     '@/components/Page': { Page: 'main', Err: 'error' },
     '@/components/TierBadge': { TierBadge: 'badge' },
+    '@/lib/tiers': { isTier: t => ['$', '$$', '$$$'].includes(t), tierLabel: t => t },
     '@/components/Skeleton': { Skeleton: 'status', SkeletonBlock: 'block' },
     '@/lib/client': {
       useApi: () => ({ data: current, error: '', reload: async () => { current = structuredClone(server); return current; } }),

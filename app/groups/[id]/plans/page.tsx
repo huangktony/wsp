@@ -10,6 +10,7 @@ import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { Page, Err } from "@/components/Page";
 import { TierBadge } from "@/components/TierBadge";
+import { isTier, tierLabel } from "@/lib/tiers";
 import { Skeleton, SkeletonBlock } from "@/components/Skeleton";
 import { api, useApi } from "@/lib/client";
 
@@ -227,6 +228,7 @@ export default function Plans({
   return (
     <div className={inter.className}>
       <Page back={backHref}>
+        <div className="glass mb-3 !p-3">
         {data.round.sample_places && (
           <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>
         )}
@@ -239,6 +241,7 @@ export default function Plans({
           {data.group.name}
           {data.round.attempt > 1 && ` · Round ${data.round.attempt}`}
         </p>
+        </div>
         <h1 className="mb-3 font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">
           {open.length} {open.length === 1 ? "plan" : "plans"} for{" "}
           {availabilityLabel(data.round.slot ?? "")}
@@ -254,7 +257,7 @@ export default function Plans({
           {data.confirmed > 0 && (
             <span className="chip">{data.confirmed} confirmed</span>
           )}
-          <TierBadge tier={data.round.group_tier} label="Group budget" />
+          <TierBadge tier={isTier(data.round.group_tier) ? tierLabel(data.round.group_tier) : null} label="Group budget" />
         </div>
 
         <InclusionBanner inclusion={data.inclusion} />
@@ -310,7 +313,7 @@ export default function Plans({
                 {p.generated_by === "gemini" && <p className="mt-1 text-xs font-semibold text-secondary">Picked by Gemini</p>}
                 <p className="mt-1 text-sm font-normal text-secondary">
                   {availabilityLabel(data.round.slot ?? "")} · {p.stops.length}{" "}
-                  {p.stops.length === 1 ? "stop" : "stops"} · {p.price_level}
+                  {p.stops.length === 1 ? "stop" : "stops"}
                 </p>
                 <ol className="my-3 space-y-1 text-sm font-normal">
                   {p.stops.map((s: any, i: number) => (

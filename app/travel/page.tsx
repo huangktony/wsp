@@ -40,8 +40,8 @@ export default function TravelHome() {
   const card = (trip: TripSummary) => {
     const needsVote = trip.phase === 'voting' && trip.setupDone && !trip.myVoted && !trip.myConfirmed;
     const action = trip.phase === 'voting' ? !trip.setupDone ? 'Finish setup' : needsVote ? 'Vote now' : 'See my ballot' : trip.phase === 'final' || savedChoice(trip) ? 'View trip' : !trip.setupDone ? 'Finish setup' : 'View trip';
-    return <article key={trip.id} className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl ${needsVote ? 'bg-orchid/40' : 'bg-pistachio'}`}>
-      <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? 'bg-orchid' : 'bg-matcha'} px-[18px] py-4`}>
+    return <article key={trip.id} className={`relative flex w-full min-w-0 shrink-0 snap-start flex-col rounded-3xl bg-votebody`}>
+      <div className={`flex h-[84px] items-start justify-between rounded-t-3xl ${needsVote ? 'bg-orchid' : 'bg-votehead'} px-[18px] py-4`}>
         <span className="rounded-xl bg-panel px-2.5 py-[5px] text-xs font-extrabold text-white">{label(trip)}</span>
         <Smiley size={48} fill={needsVote ? 'fill-pistachio' : undefined} />
       </div>
@@ -52,7 +52,7 @@ export default function TravelHome() {
       </div>
     </article>;
   };
-  return <Page variant="plain"><div className={`${inter.className} bg-surface text-indigo`}>
+  return <Page variant="plain"><div className={`${inter.className} text-indigo`}>
     <p className="px-6 pt-6 text-xs font-extrabold tracking-[0.18em] text-secondary">WSP TRAVEL</p>
     <header className="flex items-center justify-between px-6 pb-3 pt-2">
       {searching ? <div role="search" className="flex w-full items-center gap-3" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); } }}>

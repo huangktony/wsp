@@ -111,9 +111,11 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
         </div>
       )}
 
-      <h2 className={`${sent ? "" : "mt-2"} font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo`}>{plan.title}</h2>
-      {plan.generated_by === "gemini" && <p className="mt-1 text-xs font-semibold text-secondary">Picked by Gemini</p>}
-      <p className="mb-4 text-[15px] text-secondary">{slotLabel(round.slot, round.created_at)}</p>
+      <div className={`glass mb-4 !p-3 ${sent ? "" : "mt-2"}`}>
+        <h2 className="font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px] text-indigo">{plan.title}</h2>
+        {plan.generated_by === "gemini" && <p className="mt-1 text-xs font-semibold text-secondary">Picked by Gemini</p>}
+        <p className="text-[15px] text-secondary">{slotLabel(round.slot, round.created_at)}</p>
+      </div>
 
       {/* Itinerary */}
       <ol className="card mb-3">
@@ -179,7 +181,7 @@ export default function Final({ params }: { params: Promise<{ id: string }> }) {
           ))}
         </div>
       )}
-      {!sent && <p className="mb-3 text-xs text-muted">{split.mode === "even" ? "Everyone going pays the same." : "You only pay for the stops you go to."}</p>}
+      {!sent && <p className="glass mb-3 !p-3 text-xs text-muted">{split.mode === "even" ? "Everyone going pays the same." : "You only pay for the stops you go to."}</p>}
 
       <ul className="card mt-3 divide-y divide-line p-0">
         {split.rows.map((x: any) => {

@@ -59,8 +59,8 @@ for (const [label, data, ids] of [
   }
   assert.ok(!text(tree).includes('Needs Action'));
   for (const card of cards) {
-    assert.match(card.props.className, /bg-pistachio/);
-    assert.ok(nodes(card).some(n => n.props?.className?.includes('bg-matcha')));
+    assert.match(card.props.className, /bg-votebody/);
+    assert.ok(nodes(card).some(n => n.props?.className?.includes('bg-votehead')));
   }
   const content = nodes(tree).find(n => n.props?.className === 'flex flex-col gap-4 px-6');
   for (const g of data) {
@@ -93,7 +93,7 @@ test('all comfort options expose canonical ranges even without a linked account 
     const tree = picker(suggested, picked);
     const radios = nodes(tree).filter(n => n.props?.role === 'radio');
     assert.equal(radios.length, 3);
-    assert.deepEqual(radios.map(n => text(n)), ['$Up to $12', '$$Over $12 through $30', '$$$Over $30']);
+    assert.deepEqual(radios.map(n => text(n)), ['LowUp to $12', 'Medium$12\u2013$30', 'HighOver $30']);
     assert.equal(radios.filter(n => n.props.tabIndex === 0).length, 1);
     for (const radio of radios) assert.match(radio.props['aria-label'], /per person per stop/);
     assert.match(text(tree), /Prices are estimates/);
@@ -134,7 +134,7 @@ test('failed plans show the provider error and a keyboard-accessible retry inste
     react: { ...react, use: value => value, useMemo: fn => fn() },
     'next/link': { default: 'a' }, 'next/font/google': { Inter: () => ({ className: 'inter' }) },
     'next/navigation': { useRouter: () => ({ replace() {} }) }, '@/lib/useSetupGate': { useSetupGate() {} },
-    '@/components/Page': { Page: 'main', Err: 'error' }, '@/components/TierBadge': { TierBadge: 'badge' },
+    '@/components/Page': { Page: 'main', Err: 'error' }, '@/components/TierBadge': { TierBadge: 'badge' }, '@/lib/tiers': tiers,
     '@/components/Skeleton': { Skeleton: 'skeleton', SkeletonBlock: 'block' },
     '@/lib/client': { useApi: () => ({ data: { round: { status: 'failed', search_error: 'Search service unavailable. Try again.' }, plans: [] } }) },
   }).default;
@@ -152,4 +152,11 @@ test('voting cards sort by round date, appear once, and keep final cards white',
   assert.match(final.props.className, /bg-surface/);
   assert.equal(nodes(tree).filter(n => n.type === 'h2' && text(n) === 'Other groups').length, 1);
   assert.ok(nodes(tree).some(n => n.props?.['aria-label'] === 'Search groups'));
+});
+
+test('themed group cards preserve the requested light palette', () => {
+  const css = fs.readFileSync('app/globals.css', 'utf8').split(':root[data-theme="dark"]')[0];
+  for (const [token, value] of [['vote-head', '#8fb78f'], ['vote-body', '#cbe6c7'], ['vote-face', '#f3a5bc'], ['setup-head', '#ffc49b'], ['setup-body', '#ffebdd'], ['setup-face', '#ffffff']]) {
+    assert.ok(css.includes(`--${token}: ${value};`));
+  }
 });

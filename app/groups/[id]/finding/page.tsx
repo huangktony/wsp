@@ -9,6 +9,7 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Smiley } from "@/components/Smiley";
 import { Confetti } from "@/components/Splash";
+import { isTier, tierLabel } from "@/lib/tiers";
 import { runFinding, type FindingGroup } from "@/lib/findingFlow";
 
 const inter = Inter({ subsets: ["latin"], weight: ["600", "700", "800"] });
@@ -82,7 +83,7 @@ export default function Finding({ params }: { params: Promise<{ id: string }> })
   const rows = [
     ["Shared free time found", details?.slot ? availabilityLabel(details.slot) : "Matching times"],
     ["Places searched nearby", details?.maxDistanceMi == null ? "Checking preferences" : `within ${details.maxDistanceMi} mi`],
-    ["Filtered to the group budget", tier ? `${tier} and under` : "Checking budget"],
+    ["Filtered to the group budget", isTier(tier) ? tierLabel(tier) : "Checking budget"],
     [planCount ? `Writing ${planCount} ${planCount === 1 ? "plan" : "plans"}` : "Writing plans", "almost there"],
   ];
   const running = phase === "running";

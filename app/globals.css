@@ -19,12 +19,26 @@
   --page: #fbf8f1;
   --nav: #ffffff;
   --circle: #ffffff; /* fill for the dashed "New" circle */
+  /* Voting-open group cards: same green as before in light mode */
+  --vote-head: #8fb78f;
+  --vote-body: #cbe6c7;
+  --vote-face: #f3a5bc;
+  /* SET UP group card (light values are the original peach look) */
+  --setup-head: #ffc49b;
+  --setup-body: #ffebdd;
+  --setup-pill: #f3a5bc;
+  --setup-pill-ink: #7a1a3f;
+  --setup-face: #ffffff;
+  --setup-btn: #8fb78f;
+  --setup-btn-ink: #1b3a1e;
+  --setup-btn-border: rgb(27 58 30 / 20%);
   --confetti-mint: #cbe6c7;
   --confetti-sage: #8fb78f;
   --surface: #ffffff;
   --panel: var(--ink); /* dark cards with white text */
   --panel-soft: #cbe6c7; /* accent text on --panel */
   --logo-ink: var(--ink);
+  --smiley-ink: var(--logo-ink); /* eyes and mouth of <Smiley> on cards */
   --matcha: #8fb78f;
   --pistachio: #cbe6c7;
   --azure: #b4cccf;
@@ -87,6 +101,18 @@
   --nav: #111f27; /* a touch darker than --surface */
   --confetti-mint: #d3a9b8; /* background confetti: green turns musty pink */
   --confetti-sage: #b57d92;
+  --smiley-ink: #fbd0de; /* light eyes and mouth so the smiley reads on the dark pink face */
+  --vote-head: #c08b74; /* voting open: dusty peach */
+  --vote-body: #7a5a52;
+  --vote-face: #f5cdb8;
+  --setup-head: #3d5566; /* SET UP card: dull slate blue, muted like the other dark cards */
+  --setup-body: #2c3f4c;
+  --setup-pill: #b9d6e4;
+  --setup-pill-ink: #1b2d38;
+  --setup-face: #b9d6e4;
+  --setup-btn: var(--panel);
+  --setup-btn-ink: #ffffff;
+  --setup-btn-border: transparent;
   color-scheme: dark;
 }
 
@@ -102,6 +128,15 @@ h1, h2, h3 { font-family: var(--font-display); }
   .chip { @apply inline-flex items-center rounded-full bg-mint px-3 py-1 text-xs font-semibold tracking-wide text-sageink; }
   .chip-pink { @apply inline-flex items-center rounded-full bg-pinksoft px-3 py-1 text-xs font-semibold tracking-wide text-ink; }
   .label { @apply mb-1 block text-sm font-semibold text-muted; }
+}
+
+/* Translucent panel for text and rows that sit directly on the moving confetti. Theme variables only, so it works in light and dark. */
+.glass {
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 20px; /* same as .card (rounded-card) */
+  padding: 16px;
 }
 
 /* Profile distance slider: matcha fill up to the thumb, orchid thumb. */
@@ -137,6 +172,12 @@ h1, h2, h3 { font-family: var(--font-display); }
     overflow-y: auto; scrollbar-width: none;
   }
   .phone-screen::-webkit-scrollbar { display: none; }
+  /* Full-bleed screens (login) run behind the notch and down to the bottom edge. */
+  .phone-screen:has(.full-bleed) { padding-top: 0; }
+  .phone-screen > div:has(> .full-bleed) { display: flex; flex-direction: column; height: 100%; }
+  .phone-screen .full-bleed { flex: 1 1 auto; min-height: 0; }
+  .phone-screen .full-bleed .login-hero { height: 416px; padding-top: 128px; } /* the 44px the frame used to add, now inside the hero */
+  .phone-screen .full-bleed .login-smiley { top: 74px; }
   .phone-screen .min-h-screen, .phone-screen .min-h-\[100svh\] { min-height: 100%; }
 }
 
@@ -280,3 +321,23 @@ html.wsp-splash-skip .wsp-splash { display: none; }
   animation-delay: calc(var(--i) * 70ms), calc(var(--i) * -.8s);
 }
 @media (prefers-reduced-motion: reduce) { .finding-confetti .cf { animation: none; } }
+
+/* ---------- Login hero: "Peek + confetti" (components/LoginArt.tsx, LoginForm in components/AuthForm.tsx) ---------- */
+.login-hero {
+  background: radial-gradient(120% 90% at 40% 45%,
+    color-mix(in srgb, var(--sage) 80%, white) 0%,
+    var(--sage) 55%,
+    color-mix(in srgb, var(--sage) 88%, black) 100%);
+}
+/* confetti drifts up and down slowly, each shape a little out of step */
+.login-cf { transform-box: fill-box; transform-origin: center; animation: login-drift 6s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -.8s); }
+@keyframes login-drift { 0% { translate: 0 0; } 100% { translate: 0 -6px; } }
+/* the wink: every 2.5 s, a quick wink (about 0.4 s = 15% of the loop) with a small head tilt; the first one lands ~2.4 s after opening */
+.login-face, .login-wink { transform-box: fill-box; transform-origin: center; animation-duration: 2.5s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; animation-delay: -2.05s; }
+.login-wink { animation-name: login-wink; }
+.login-face { animation-name: login-tilt; }
+@keyframes login-wink { 0%, 78%, 93%, 100% { transform: scaleY(1); } 83%, 86% { transform: scaleY(.08); } }
+@keyframes login-tilt { 0%, 76%, 100% { transform: rotate(0deg); } 84%, 90% { transform: rotate(-7deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .login-cf, .login-face, .login-wink { animation: none; }
+}

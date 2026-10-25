@@ -97,7 +97,7 @@ export default function Setup({
 
   return (
     <Page variant="plain">
-      <div className={`${inter.className} [&_*]:[font-family:inherit] [&_input::placeholder]:[font-family:inherit] [&_textarea::placeholder]:[font-family:inherit] bg-surface px-6 pt-6 text-indigo`}>
+      <div className={`${inter.className} [&_*]:[font-family:inherit] [&_input::placeholder]:[font-family:inherit] [&_textarea::placeholder]:[font-family:inherit] px-6 pt-6 text-indigo`}>
         <BackButton
           href={
             data?.availability?.length

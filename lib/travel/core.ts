@@ -1,22 +1,40 @@
 // Shared, pure travel rules. Safe for the public sample demo: no accounts, DB or providers.
 export class TravelInputError extends Error {}
-export const AIRPORTS = [
-  ['AUS', 'Austin'], ['DEN', 'Denver'], ['ELP', 'El Paso'], ['IAH', 'Houston'],
-  ['ORD', 'Chicago'], ['ATL', 'Atlanta'], ['BOS', 'Boston'], ['CLT', 'Charlotte'],
-  ['DFW', 'Dallas–Fort Worth'], ['DTW', 'Detroit'], ['EWR', 'Newark'], ['IAD', 'Washington Dulles'],
-  ['JFK', 'New York JFK'], ['LAS', 'Las Vegas'], ['LAX', 'Los Angeles'], ['MCO', 'Orlando'],
-  ['MIA', 'Miami'], ['MSP', 'Minneapolis'], ['PDX', 'Portland'], ['PHL', 'Philadelphia'],
-  ['PHX', 'Phoenix'], ['SAN', 'San Diego'], ['SEA', 'Seattle'], ['SFO', 'San Francisco'], ['SLC', 'Salt Lake City'],
-] as const;
+// [code, city, region, country]. Region is the US state, or the country code for international airports.
+// Home airports are US only; international ones are destinations. Coordinates live in discovery.ts `geography`.
+export const AIRPORTS: readonly (readonly [code: string, city: string, region: string, country: string])[] = [
+  ['AUS', 'Austin', 'TX', 'US'], ['DEN', 'Denver', 'CO', 'US'], ['ELP', 'El Paso', 'TX', 'US'], ['IAH', 'Houston', 'TX', 'US'],
+  ['ORD', 'Chicago', 'IL', 'US'], ['ATL', 'Atlanta', 'GA', 'US'], ['BOS', 'Boston', 'MA', 'US'], ['CLT', 'Charlotte', 'NC', 'US'],
+  ['DFW', 'Dallas–Fort Worth', 'TX', 'US'], ['DTW', 'Detroit', 'MI', 'US'], ['EWR', 'Newark', 'NJ', 'US'], ['IAD', 'Washington Dulles', 'VA', 'US'],
+  ['JFK', 'New York JFK', 'NY', 'US'], ['LAS', 'Las Vegas', 'NV', 'US'], ['LAX', 'Los Angeles', 'CA', 'US'], ['MCO', 'Orlando', 'FL', 'US'],
+  ['MIA', 'Miami', 'FL', 'US'], ['MSP', 'Minneapolis', 'MN', 'US'], ['PDX', 'Portland', 'OR', 'US'], ['PHL', 'Philadelphia', 'PA', 'US'],
+  ['PHX', 'Phoenix', 'AZ', 'US'], ['SAN', 'San Diego', 'CA', 'US'], ['SEA', 'Seattle', 'WA', 'US'], ['SFO', 'San Francisco', 'CA', 'US'], ['SLC', 'Salt Lake City', 'UT', 'US'],
+  ['SAT', 'San Antonio', 'TX', 'US'], ['HOU', 'Houston Hobby', 'TX', 'US'], ['DAL', 'Dallas Love Field', 'TX', 'US'],
+  ['OAK', 'Oakland', 'CA', 'US'], ['SJC', 'San Jose', 'CA', 'US'], ['SMF', 'Sacramento', 'CA', 'US'], ['BUR', 'Burbank', 'CA', 'US'],
+  ['FLL', 'Fort Lauderdale', 'FL', 'US'], ['TPA', 'Tampa', 'FL', 'US'], ['LGA', 'New York LaGuardia', 'NY', 'US'],
+  ['CUN', 'Cancún', 'MX', 'MX'], ['MEX', 'Mexico City', 'MX', 'MX'], ['PVR', 'Puerto Vallarta', 'MX', 'MX'],
+  ['YYZ', 'Toronto', 'CA', 'CA'], ['YVR', 'Vancouver', 'CA', 'CA'], ['LHR', 'London', 'GB', 'GB'], ['CDG', 'Paris', 'FR', 'FR'],
+  ['FCO', 'Rome', 'IT', 'IT'], ['BCN', 'Barcelona', 'ES', 'ES'], ['HND', 'Tokyo', 'JP', 'JP'], ['ICN', 'Seoul', 'KR', 'KR'], ['SJO', 'San José, Costa Rica', 'CR', 'CR'],
+];
 export const airportName = (code: string) => AIRPORTS.find(a => a[0] === code)?.[1] ?? code;
+/** Any supported airport, US or international (destinations and flight lookups). */
 export const validAirport = (code: unknown): code is string => typeof code === 'string' && AIRPORTS.some(a => a[0] === code);
+export const US_AIRPORTS = AIRPORTS.filter(a => a[3] === 'US');
+export const INTERNATIONAL_AIRPORTS = AIRPORTS.filter(a => a[3] !== 'US');
+/** Home airports are US only. */
+export const validHomeAirport = (code: unknown): code is string => typeof code === 'string' && US_AIRPORTS.some(a => a[0] === code);
+export const airportRegion = (code: string) => AIRPORTS.find(a => a[0] === code)?.[2];
+export type TripScope = 'state' | 'national' | 'global';
+export const SCOPES: readonly { value: TripScope; label: string }[] = [{ value: 'state', label: 'In-state' }, { value: 'national', label: 'National' }, { value: 'global', label: 'Global' }];
+export const scopeLabel = (scope: TripScope) => SCOPES.find(s => s.value === scope)?.label ?? 'National';
 export type Candidate = { id: number; airport: string; depart: string; return: string };
 export type Vote = 'approve' | 'veto';
 export type Ballot = { userId: number; optionId: number; value: Vote };
 export type Quote = { origin: string; destination: string; depart: string; return: string; price: number | null; local: boolean; airlines: string[]; stops: number | null; duration: number | null; quotedAt: string; source: 'serpapi' | 'sample' | 'local'; error?: string; failure?: 'configuration' | 'provider' | 'no-fare' };
 export type Route = Quote & { userId: number; name: string; check: boolean | null; checkSource: 'nessie-sandbox' | 'simulated' | 'unknown' };
 export type Recommendation = { kind: 'lowest-cost' | 'easiest-travel' | 'balanced' | 'alternative'; label: string; reason: string };
-export type Option = Candidate & { routes: Route[]; total: number | null; complete: boolean; recommendation?: Recommendation };
+/** `fits: false` marks a closest-but-over-budget option, offered only when nothing fits. Its routes carry no per-person check. */
+export type Option = Candidate & { routes: Route[]; total: number | null; complete: boolean; recommendation?: Recommendation; fits?: false };
 export const CHECK_TTL = 5 * 60_000;
 export const FARE_TTL = 15 * 60_000;
 export function validDay(value: unknown): value is string {
@@ -39,7 +57,7 @@ export function validateCandidates(input: unknown, now = new Date()): Candidate[
   });
 }
 export function validateSetup(input: any) {
-  if (!input || !validAirport(input.airport)) throw new TravelInputError('Choose your home airport from the supported US list.');
+  if (!input || !validHomeAirport(input.airport)) throw new TravelInputError('Choose your home airport from the supported US list.');
   if (typeof input.budget !== 'number' || !Number.isFinite(input.budget) || input.budget < 0.01 || input.budget > 100000) throw new TravelInputError('Enter a flight budget greater than $0 and at most $100,000.');
   return { airport: input.airport as string, budget: Math.round(input.budget * 100) / 100 };
 }
@@ -75,12 +93,13 @@ export function publicOptions(options: Option[], checkedAt: string, now = Date.n
   return options.map(o => ({
     id: o.id, airport: o.airport, depart: o.depart, return: o.return,
     complete: o.complete, total: o.complete ? o.total : null,
+    ...(o.fits === false ? { fits: false as const } : {}),
     ...(o.recommendation ? { recommendation: { kind:o.recommendation.kind, label:o.recommendation.label, reason:o.recommendation.reason } } : {}),
     routes: o.routes.map(r => ({
       userId: r.userId, name: r.name, origin: r.origin, destination: r.destination, depart: r.depart, return: r.return,
       price: r.price, local: r.local, airlines: r.airlines, stops: r.stops, duration: r.duration,
       quotedAt: r.quotedAt, source: r.source, error: r.error,
-      check: fresh ? r.check : null, checkSource: fresh ? r.checkSource : 'unknown',
+      check: fresh && o.fits !== false ? r.check : null, checkSource: fresh && o.fits !== false ? r.checkSource : 'unknown',
     })),
   }));
 }
@@ -88,3 +107,9 @@ export function defaultCandidates(now = new Date()): Candidate[] {
   const day = (offset: number) => new Date(now.getTime() + offset * 864e5).toISOString().slice(0, 10);
   return ['AUS', 'DEN'].map((airport, i) => ({ id: i + 1, airport, depart: day(30), return: day(33) }));
 }
+
+export type BudgetSuggestions = { light: number; room: number; flex: number; available: number };
+const PRESET_LABELS = ['Keep it light', 'A little room', 'More flexibility'];
+/** Fixed amounts are used when there is no live bank account to size the presets from. */
+const FALLBACK_PRESETS = [200, 400, 700];
+export const presetsFor = (s: BudgetSuggestions | null | undefined) => (s ? [s.light, s.room, s.flex] : FALLBACK_PRESETS).map((amount, i) => ({ amount, label: PRESET_LABELS[i] }));

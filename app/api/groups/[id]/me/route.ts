@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { q, q1 } from "@/lib/db";
+import { SLOTS } from "@/lib/constants";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -9,7 +10,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const m = await q1<any>("select m.availability, u.interests, u.max_distance_mi, u.budget_tier from memberships m join users u on u.id=m.user_id where m.group_id=$1 and m.user_id=$2", [id, uid]);
   return m ? json(m) : fail("not in this group", 403);
 }
-const Body = z.object({ availability: z.array(z.string()), interests: z.array(z.string()).max(12), max_distance_mi: z.number().int().min(1).max(100) });
+const Body = z.object({ availability: z.array(z.enum(SLOTS)), interests: z.array(z.string()).max(12), max_distance_mi: z.number().int().min(1).max(100) });
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const uid = await requireUser();
   if (typeof uid !== "number") return uid;

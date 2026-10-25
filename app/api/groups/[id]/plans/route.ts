@@ -1,8 +1,10 @@
+import { getVotingParticipation } from "@/lib/voting";
 import { q, q1 } from "@/lib/db";
 import { fail, isMember, json, requireUser } from "@/lib/api";
 import { computeSplit, fillRound, settleRound, startRound, withStopCosts } from "@/lib/pipeline";
 
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 /** Screen 8: start finding plans (or join the search already running). Also used to regenerate after an all-veto round. */
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,14 +54,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     if (open) { delete p.approve; delete p.veto; }
   }
   const members = await q<{ id: number; name: string }>("select u.id,u.name from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.joined_at", [id]);
-  const voted = (await q1<any>(
-    `select count(*)::int c from (select v.user_id from votes v join plans p on p.id=v.plan_id where p.round_id=$1 group by v.user_id having count(*) = $2) x`,
-    [round.id, plans.length]))!.c;
+  const { voted, memberCount, roundOpen } = await getVotingParticipation(id, round);
 
   let split = null, payments: any[] = [];
   if (round.status === "final") {
     split = await computeSplit(round.id);
     payments = await q<any>("select p.id,p.user_id,u.name,p.amount::float amount,p.status from payments p join users u on u.id=p.user_id where p.round_id=$1 order by p.id", [round.id]);
   }
-  return json({ ...base, round, plans, members, memberCount: members.length, voted, split, payments, isPayer: round.payer_id === uid });
+  return json({ ...base, round, plans, members, memberCount, voted, roundOpen, split, payments, isPayer: round.payer_id === uid });
 }

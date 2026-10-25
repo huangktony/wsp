@@ -5,6 +5,17 @@ export default {
   theme: {
     extend: {
       colors: {
+        matcha: "#8FB78F",
+        pistachio: "#CBE6C7",
+        azure: "#B4CCCF",
+        indigo: "#28536B",
+        orchid: "#F3A5BC",
+        secondary: "#35607A",
+        maroon: "#8A1F47",
+        orchidink: "#7A1A3F",
+        matchaink: "#1B3A1E",
+        inactive: "#5F8793",
+        outline: "#6F98A2",
         ink: "var(--ink)",
         muted: "var(--muted)",
         line: "var(--border)",
@@ -15,10 +26,13 @@ export default {
         pinksoft: "var(--pink-soft)",
         mintsoft: "var(--mint-soft)",
         deep: "var(--deep-pink)",
+        wine: "var(--wine)",
+        field: "var(--field)",
       },
       fontFamily: {
         display: "var(--font-display)",
         body: "var(--font-body)",
+        brand: "var(--font-brand)",
       },
       borderRadius: { card: "20px" },
     },

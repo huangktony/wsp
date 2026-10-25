@@ -9,6 +9,7 @@
     "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "db:peek": "tsx --env-file=.env.local scripts/peek.ts",
+    "nessie:probe": "tsx --env-file=.env.local scripts/nessie-probe.ts",
     "db:setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {

@@ -1,5 +1,7 @@
 "use client";
-import { useSetupGate } from "@/lib/useSetupGate";
+import { groupHref } from "@/lib/finding";
+import Link from "next/link";
+import { InclusionBanner, RerunPlans } from "@/components/RoundInclusion";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
@@ -35,7 +37,6 @@ function PlansSkeleton() {
 export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const r = useRouter();
-  useSetupGate(id);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 3000);
   const [err, setErr] = useState("");
   const [mine, setMine] = useState<Record<number, Vote>>({}); // optimistic votes
@@ -68,15 +69,15 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const status = data?.round?.status;
   useEffect(() => {
     if (status === "final") r.replace(`/groups/${id}/final`);
-    if (status === "vetoed" || status === "generating") r.replace(`/groups/${id}/finding`);
-  }, [status, id, r]);
+    if ((status === "vetoed" || status === "generating") && data?.inclusion?.canVote) r.replace(`/groups/${id}/finding`);
+  }, [status, id, r, data?.inclusion?.canVote]);
 
-  if (!data) return <div className={inter.className}><Page back={`/groups/${id}`}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : <PlansSkeleton />}</Page></div>;
-  if (!data.round || status !== "voting") return <div className={inter.className}><Page back={`/groups/${id}`}>{data.round ? <PlansSkeleton /> : "No plans yet."}</Page></div>;
+  if (!data) return <div className={inter.className}><Page back={data?.round?.status === "final" ? groupHref({ id, round: data.round }) : groupHref({ id })}>{error ? <p role="alert" className="text-sm text-maroon">{error}</p> : <PlansSkeleton />}</Page></div>;
+  if (!data.round || !["voting", "vetoed"].includes(status)) return <div className={inter.className}><Page back={data?.round?.status === "final" ? groupHref({ id, round: data.round }) : groupHref({ id })}>{data.round ? <PlansSkeleton /> : "No plans yet."}</Page></div>;
 
   const voteOf = (p: any): Vote => (p.id in mine ? mine[p.id] : p.my_vote ?? null);
   const vote = (p: any, v: Exclude<Vote, null>) => {
-    if (savingRef.current.has(p.id)) return;
+    if (status !== "voting" || !data.inclusion?.canVote || savingRef.current.has(p.id)) return;
     const next = voteOf(p) === v ? null : v; // tap again to undo
     savingRef.current.add(p.id);
     setSaving([...savingRef.current]);
@@ -93,7 +94,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const voted = Math.max(0, Math.min(data.memberCount, data.voted - Number(serverHasMyVote) + Number(myCount > 0)));
 
   return (
-    <div className={inter.className}><Page back={`/groups/${id}`}>
+    <div className={inter.className}><Page back={data?.round?.status === "final" ? groupHref({ id, round: data.round }) : groupHref({ id })}>
       {data.round.sample_places && <p className="mb-2 text-sm font-bold text-maroon">Sample data</p>}
       {data.round.search_city && <p className="mb-2 text-sm text-secondary">{data.round.search_city}</p>}
       <p className="text-[15px] font-semibold text-secondary">{data.group.name}{data.round.attempt > 1 && ` · Round ${data.round.attempt}`}</p>
@@ -104,6 +105,9 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
         <TierBadge tier={data.round.group_tier} label="Group budget" />
       </div>
 
+      <InclusionBanner inclusion={data.inclusion} />
+      <RerunPlans id={id} inclusion={data.inclusion} setupComplete={data.members.some((m: any) => m.id === data.me && m.setup_done)} />
+      {!data.inclusion?.canVote && <p className="my-3 text-sm text-secondary"><Link href={`/groups/${id}/setup`} className="font-bold underline focus-visible:outline focus-visible:outline-2">Make your setup to vote</Link>{data.members.some((m: any) => m.id === data.me && m.setup_done) && " · Re-run plans to include your setup in this round."}</p>}
       <div className="space-y-4">
         {data.plans.map((p: any) => {
           const v = voteOf(p);
@@ -119,10 +123,10 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
               </ol>
               <p className="text-sm leading-[1.45] text-secondary"><b className="font-bold">Why:</b> {p.why_fits}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button disabled={saving.includes(p.id)} aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
-                  className={`h-12 rounded-2xl text-[15px] font-bold ${v === "approve" ? "bg-sage text-sageink" : "border border-line"}`}>✓ Approve</button>
-                <button disabled={saving.includes(p.id)} aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
-                  className={`h-12 rounded-2xl text-[15px] font-bold ${v === "veto" ? "bg-deep text-white" : "border border-line"}`}>✕ Veto</button>
+                <button disabled={status !== "voting" || !data.inclusion?.canVote || saving.includes(p.id)} aria-pressed={v === "approve"} onClick={() => vote(p, "approve")}
+                  className={`h-12 rounded-2xl disabled:opacity-50 text-[15px] font-bold ${v === "approve" ? "bg-sage text-sageink" : "border border-line"}`}>✓ Approve</button>
+                <button disabled={status !== "voting" || !data.inclusion?.canVote || saving.includes(p.id)} aria-pressed={v === "veto"} onClick={() => vote(p, "veto")}
+                  className={`h-12 rounded-2xl disabled:opacity-50 text-[15px] font-bold ${v === "veto" ? "bg-deep text-white" : "border border-line"}`}>✕ Veto</button>
               </div>
             </article>
           );
@@ -134,7 +138,7 @@ export default function Plans({ params }: { params: Promise<{ id: string }> }) {
         {myCount < data.plans.length ? `You've voted on ${myCount} of ${data.plans.length} plans. ` : "You're done. "}
         Votes are anonymous until the end. Voting closes at the deadline or once everyone has voted on every plan.
       </p>
-      {data.isCreator && <button className="btn-ghost mt-4" onClick={close}>Close voting now</button>}
+      {status === "voting" && data.isCreator && data.inclusion?.canVote && <button className="btn-ghost mt-4" onClick={close}>Close voting now</button>}
     </Page></div>
   );
 }

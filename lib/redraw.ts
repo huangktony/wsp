@@ -1,3 +1,5 @@
+import { roundSettings, searchPreferences } from "./roundSettings";
+import { hasSearchMetadata } from "./pipeline";
 // Group vote to redraw a FINAL plan. Server only.
 // A member taps to add or take back a vote. When votes reach more than half of the CURRENT members, a new round starts that leaves
 // out the old winner's places. Everything that must be atomic happens in one transaction holding the same per-group advisory lock
@@ -55,7 +57,21 @@ export async function toggleRedrawVote(groupId: number, userId: number): Promise
     if (!flipped.rowCount) throw new RedrawError(REDRAW_MESSAGES.locked, 409);
     const places = (await c.query("select distinct s->>'place' place from plans p, jsonb_array_elements(p.stops) s where p.id=$1", [flipped.rows[0].winner_plan_id])).rows.map((x) => x.place as string);
     const excluded = [...new Set([...(last.excluded ?? []), ...places])];
-    const created = await c.query("insert into plan_rounds(group_id,status,attempt,excluded) values($1,'generating',$2,$3) returning id", [groupId, last.attempt + 1, excluded]);
+    // A redraw is a NEW round: snapshot the current city/settings, never legacy defaults.
+    if (!(await hasSearchMetadata((sql, args) => c.query(sql, args)))) {
+      throw new RedrawError("Plan search needs a database update. Ask the group organizer to apply the round search migration.", 503);
+    }
+    const group = (await c.query("select city from groups where id=$1 for share", [groupId])).rows[0];
+    const city = group?.city?.trim();
+    if (!city) throw new RedrawError("Add a city to your group", 400);
+    const members = (await c.query("select m.user_id,m.availability,m.comfort_tier,u.budget_tier,u.interests,u.max_distance_mi from memberships m join users u on u.id=m.user_id where m.group_id=$1 order by m.user_id", [groupId])).rows;
+    const settings = roundSettings(members);
+    const preferences = searchPreferences(settings);
+    if (!preferences.distance) throw new RedrawError("Finish your setup before finding plans.", 409);
+    const created = await c.query(
+      "insert into plan_rounds(group_id,status,attempt,excluded,search_city,search_distance_mi,sample_places,group_tier,search_settings) values($1,'generating',$2,$3,$4,$5,$6,$7,$8::jsonb) returning id",
+      [groupId, last.attempt + 1, excluded, city, preferences.distance, process.env.USE_SAMPLE_PLACES === "true", preferences.tier, JSON.stringify(settings)]);
+
     await c.query("commit");
     return { started: true, roundId: created.rows[0].id, oldRoundId: last.id };
   } catch (e) {

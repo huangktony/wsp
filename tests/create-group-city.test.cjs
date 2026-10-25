@@ -9,7 +9,8 @@ function load(file, mocks, globals = {}) {
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
   vm.runInNewContext(code, { exports, ...globals, require(name) {
     if (name in mocks) return mocks[name];
-    if (name === 'zod') return require('zod');
+    if (name === '@/lib/roundParticipation') return load('lib/roundParticipation.ts', {});
+      if (name === 'zod') return require('zod');
     throw Error(`Unmocked import: ${name}`);
   } });
   return exports;

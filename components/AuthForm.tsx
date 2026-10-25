@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { PROFILES, PROFILE_LABELS, type Spender } from "@/lib/profiles";
-import { Logo, Wordmark } from "./Logo";
+import { Wordmark } from "./Logo";
+import { LoginConfetti, WinkingSmiley } from "./LoginArt";
 import { Err } from "./Page";
 
 const field = "h-14 w-full rounded-2xl border-2 border-field bg-surface px-4 text-base text-ink outline-none focus:border-ink";
@@ -30,9 +31,10 @@ export function LoginForm() {
     go(() => api("/api/auth/login", "POST", f));
   };
   return (
-    <main className="flex min-h-screen flex-col">
-      <div className="relative h-[372px] shrink-0 overflow-hidden bg-sage px-7 pt-[84px] text-ink">
-        <Logo size={320} decorative className="absolute -right-24 top-[30px]" />
+    <main className="full-bleed flex min-h-screen flex-col">
+      <div className="login-hero relative h-[372px] shrink-0 overflow-hidden px-7 pt-[84px] text-ink">
+        <LoginConfetti />
+        <WinkingSmiley size={320} className="login-smiley absolute -right-24 top-[30px]" />
         <h1 className="relative"><Wordmark className="text-[96px]" /></h1>
         <p className="relative mt-3.5 max-w-[170px] font-brand text-lg font-bold leading-snug text-sageink">afford. hang.</p>
       </div>

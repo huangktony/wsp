@@ -16,7 +16,7 @@ const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 function Header() {
   return (
     <header className="mb-5 flex items-center justify-between">
-      <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Your money</h1>
+      <h1 className="font-[inherit] text-[36px] font-extrabold leading-tight tracking-[-1.4px]">Budgeting</h1>
       <span className="rounded-full bg-orchid px-3 py-1 text-xs font-extrabold tracking-wide text-orchidink">DEMO</span>
     </header>
   );
@@ -105,7 +105,7 @@ export default function Spending() {
         </div>
       )}
 
-      <section aria-label="Where it went" className="mt-7">
+      <section aria-label="Where it went" className="glass mt-7">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-[inherit] text-xl font-extrabold tracking-[-0.5px]">Where it went</h2>
           <p className="text-sm font-semibold text-secondary">{formatMoney(data.spent)} in 30 days</p>
@@ -128,7 +128,7 @@ export default function Spending() {
         ) : <p className="mt-3 text-sm text-secondary">No spending in the last 30 days.</p>}
       </section>
 
-      <section aria-label="Recent" className="mt-7">
+      <section aria-label="Recent" className="glass mt-7">
         <h2 className="font-[inherit] text-xl font-extrabold tracking-[-0.5px]">Recent</h2>
         {data.transactions.length ? (
           <ul className="mt-1 divide-y divide-azure">
@@ -165,7 +165,7 @@ export default function Spending() {
         )}
       </section>
 
-      <p className="mt-6 pb-2 text-center text-xs text-secondary">
+      <p className="glass mt-6 !p-3 text-center text-xs text-secondary">
         Your balance starts from your Nessie demo balance and moves with your purchases and paybacks, since Nessie never changes it. Recorded in your Capital One Nessie demo account. Demo only, no real money moves. Only you can see this.
       </p>
     </Shell>

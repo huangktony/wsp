@@ -57,6 +57,7 @@ print(json.dumps([dict(user_id=r[0],has_voted=bool(r[1])) for r in c.execute(x['
   mocks['@/lib/voting'] = load('lib/voting.ts', mocks);
   mocks['@/lib/findingData'] = { getFindingDetails: async () => null };
   mocks['@/lib/tier'] = { groupTier: async () => null };
+  mocks['@/lib/groups'] = { deleteGroup: async () => ({ ok: true }) };
   const home = load('app/api/groups/[id]/route.ts', mocks).GET;
   const post = load('app/api/plans/[id]/vote/route.ts', mocks).POST;
   const get = load('app/api/groups/[id]/plans/route.ts', mocks).GET;
@@ -213,7 +214,8 @@ test('home shares partial-ballot progress and falls back to setup without an ope
     '@/components/BackButton': { BackButton: 'a' },
     '@/lib/useFindingRedirect': { useFindingRedirect() {} },
     'next/font/google': { Inter: () => ({ className: '' }) },
-    '@/lib/client': { useApi: () => ({ data, error: '' }) },
+    'next/navigation': { useRouter: () => ({ push() {} }) },
+    '@/lib/client': { useApi: () => ({ data, error: '' }), api: async () => ({}) },
   }).default;
   const nodes = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(nodes) : [n, ...nodes(n.props?.children)];
   const text = n => n == null || typeof n === 'boolean' ? '' : typeof n !== 'object' ? String(n) : Array.isArray(n) ? n.map(text).join('') : text(n.props?.children);

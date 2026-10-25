@@ -6,6 +6,7 @@ const finance=load('lib/travel/finance.ts',{'../ledger':load('lib/ledger.ts'),'.
 const discovery=load('lib/travel/discovery.ts',{'./core':core,'./finance':finance});
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Array.isArray(n)?n.map(text).join(''):text(n.props?.children);
+const inviteLib=load('lib/inviteCodeInput.ts');
 const ui={TravelFrame:'main',TravelSkeleton:'skeleton',FareWarning:'fare-warning',TravelArt:'art',DatesEditor:'editor',DiscoverySummaryNote:'summary',ComparisonCards:'cards',TravelNotice:'notice',AirportSelect:'airport',travelButton:'primary',travelQuiet:'quiet',travelInput:'input',travelFocus:'focus'};
 function harness(file,initial){
   let data=initial,index=0,refIndex=0,effects=[],calls=[],routes=[];const state=[],refs=[];
@@ -13,7 +14,7 @@ function harness(file,initial){
   let respond=async()=>({comparisonId:11}),reloads=0;
   const page=load(file,{
     react:{use:p=>p,useState:v=>{const i=index++;if(!(i in state))state[i]=typeof v==='function'?v():v;return [state[i],v=>state[i]=typeof v==='function'?v(state[i]):v];},useRef:v=>refs[refIndex++]??(refs[refIndex-1]={current:v}),useEffect:fn=>effects.push(fn)},
-    'next/font/google':{Inter:()=>({className:'inter'})},'@/components/Page':{Page:'page'},'@/components/Smiley':{Smiley:'smiley'},'next/link':{default:'a'},'next/navigation':{useRouter:()=>router},'@/lib/travel/discovery':discovery,'@/lib/travel/core':core,'@/lib/travel/flow':flow,'@/lib/travel/format':format,
+    'next/font/google':{Inter:()=>({className:'inter'})},'@/components/Page':{Page:'page'},'@/components/Smiley':{Smiley:'smiley'},'@/components/BackButton':{BackButton:'back'},'@/components/InviteCodeInput':{InviteCodeInput:'invite'},'@/lib/inviteCodeInput':inviteLib,'next/link':{default:'a'},'next/navigation':{useRouter:()=>router},'@/lib/travel/discovery':discovery,'@/lib/travel/core':core,'@/lib/travel/flow':flow,'@/lib/travel/format':format,
     '@/components/TravelUI':ui,'@/lib/client':{useApi:()=>({data,error:'',reload:async()=>{reloads++;return data;}}),api:async(...args)=>{calls.push(args);return respond(...args);}},
   }).default;
   const render=()=>{index=0;refIndex=0;effects=[];return page({params:{id:'5'}});};
@@ -77,36 +78,47 @@ test('dashboard partitions voting trips with no inline create or join; demo rema
   assert.equal(nodes(tree).filter(n=>n.type==='form').length,0);assert.equal(nodes(tree).filter(n=>n.type==='input'&&n.props.type==='search').length,0);assert.ok(nodes(tree).some(n=>n.type==='button'&&n.props['aria-label']==='Search trips'));assert.ok(!nodes(tree).some(n=>n.type==='a'&&n.props.href==='/travel/new'));
   const empty=harness('app/travel/page.tsx',[]);assert.match(text(empty.render()),/No trips yet/);
 });
+const tick=()=>new Promise(r=>setTimeout(r,0));
+const typeName=(h,value='Reunion')=>nodes(h.render()).find(n=>n.type==='input'&&n.props['aria-label']==='Trip name').props.onChange({target:{value}});
+const createForm=tree=>nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip');
+const joinGroup=tree=>nodes(tree).find(n=>n.props?.role==='group'&&n.props['aria-label']==='Join trip');
+const joinButton=tree=>nodes(tree).find(n=>n.type==='button'&&text(n)==='Join');
+const typeCode=(h,code,complete)=>nodes(h.render()).find(n=>n.type==='invite').props.onChange(code,complete);
 test('create goes to private setup; no top mode switches remain and bottom Travel navigation stays',async()=>{
-  const h=harness('app/travel/new/page.tsx',null);h.setRespond(async()=>({id:8}));await nodes(h.render()).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip').props.onSubmit({preventDefault(){}});assert.deepEqual(h.routes,['/travel/8/setup']);
+  const h=harness('app/travel/new/page.tsx',null);h.setRespond(async()=>({id:8}));typeName(h);await createForm(h.render()).props.onSubmit({preventDefault(){}});assert.deepEqual(h.routes,['/travel/8/setup']);
+  assert.equal(h.calls[0][0],'/api/travel');assert.equal(h.calls[0][2].name,'Reunion');
   for(const file of ['components/TravelUI.tsx','app/groups/page.tsx'])assert.ok(!fs.readFileSync(file,'utf8').includes('aria-label="WSP mode"'));
   assert.ok(fs.readFileSync('components/TabBar.tsx','utf8').includes('{ href: "/travel", label: "Travel" }'));
 });
-
-
-test('plus screen joins before shared date editor and routes according to own setup',async()=>{
+test('Start a trip mirrors Start a group: back to /travel, title, trip name and dates, then the code box with Join',async()=>{
+  const h=harness('app/travel/new/page.tsx',null);const tree=h.render();
+  assert.equal(nodes(tree).find(n=>n.type==='back').props.href,'/travel');
+  assert.equal(text(nodes(tree).find(n=>n.type==='h1')),'Start a trip');
+  assert.ok(nodes(createForm(tree)).some(n=>n.type==='editor'),'dates are in the create form');
+  assert.equal(nodes(joinGroup(tree)).some(n=>n.type==='editor'),false);
+  assert.ok(text(tree).includes('OR JOIN WITH A CODE'));
+  const invite=nodes(tree).find(n=>n.type==='invite');assert.equal(invite.props.value,'TRIP-');assert.equal(invite.props.spec,inviteLib.TRAVEL_CODE);
+  assert.ok(nodes(tree).some(n=>n.type==='button'&&text(n)==='Create trip'&&n.props.form==='create-trip'),'sticky Create trip button submits the create form');
+});
+test('Join stays off until the TRIP code is complete, then joins and routes by own setup',async()=>{
   for(const setupDone of [false,true]){
     const h=harness('app/travel/new/page.tsx',null);let tree=h.render();
-    const forms=nodes(tree).filter(n=>n.type==='form');assert.deepEqual(forms.map(n=>n.props['aria-label']),['Join trip','Create trip']);
-    assert.equal(nodes(forms[0]).some(n=>n.type==='editor'),false);assert.ok(nodes(forms[1]).some(n=>n.type==='editor'));
-    assert.equal(nodes(tree).find(n=>n.type==='main').props.back,'/travel');assert.ok(!nodes(tree).some(n=>n.type==='a'&&n.props.href==='/travel'));
-    nodes(tree).find(n=>n.type==='input'&&n.props.placeholder==='TRIP-…').props.onChange({target:{value:'TRIP-ABCDEF123456'}});
-    h.setRespond(async()=>({id:7,setupDone}));tree=h.render();await nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Join trip').props.onSubmit({preventDefault(){}});
-    assert.deepEqual(h.routes,[setupDone?'/travel/7':'/travel/7/setup']);assert.equal(h.calls[0][0],'/api/travel/join');
+    assert.equal(joinButton(tree).props.disabled,true);
+    typeCode(h,'TRIP-ABCDEF12',false);assert.equal(joinButton(h.render()).props.disabled,true);
+    typeCode(h,'TRIP-ABCDEF123456',true);tree=h.render();assert.equal(joinButton(tree).props.disabled,false);
+    h.setRespond(async()=>({id:7,setupDone}));joinButton(tree).props.onClick();await tick();
+    assert.deepEqual(h.routes,[setupDone?'/travel/7':'/travel/7/setup']);assert.equal(JSON.stringify(h.calls[0]),JSON.stringify(['/api/travel/join','POST',{code:'TRIP-ABCDEF123456'}]));
   }
 });
-test('create and join errors stay in their own forms; shared busy guard prevents duplicate requests',async()=>{
+test('create and join errors stay in their own places; shared busy guard prevents duplicate requests',async()=>{
   const h=harness('app/travel/new/page.tsx',null);
-  const submit=(tree,label)=>nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']===label).props.onSubmit({preventDefault(){}});
-  h.setRespond(async()=>{throw Error('Invite not found');});await submit(h.render(),'Join trip');
-  let tree=h.render();assert.match(text(nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Join trip')),/Invite not found/);
-  assert.ok(!text(nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip')).includes('Invite not found'));
-  nodes(tree).find(n=>n.type==='editor').props.onChange({depart:'invalid',return:'invalid'});await submit(h.render(),'Create trip');
-  tree=h.render();assert.match(text(nodes(tree).find(n=>n.type==='form'&&n.props['aria-label']==='Create trip')),/Choose a future departure/);assert.equal(h.calls.length,1);
-  let release;h.setRespond(()=>new Promise(r=>release=r));tree=h.render();const pending=submit(tree,'Join trip');submit(tree,'Join trip');submit(tree,'Create trip');
-  assert.equal(h.calls.length,2);tree=h.render();assert.ok(nodes(tree).filter(n=>n.type==='button').every(n=>n.props.disabled));release({id:5,setupDone:false});await pending;
+  h.setRespond(async()=>{throw Error('Invite not found');});typeCode(h,'TRIP-ABCDEF123456',true);joinButton(h.render()).props.onClick();await tick();
+  let tree=h.render();assert.match(text(joinGroup(tree)),/Invite not found/);assert.ok(!text(createForm(tree)).includes('Invite not found'));
+  typeName(h);nodes(h.render()).find(n=>n.type==='editor').props.onChange({depart:'invalid',return:'invalid'});await createForm(h.render()).props.onSubmit({preventDefault(){}});
+  tree=h.render();assert.match(text(createForm(tree)),/Choose a future departure/);assert.equal(h.calls.length,1);
+  let release;h.setRespond(()=>new Promise(r=>release=r));tree=h.render();joinButton(tree).props.onClick();joinButton(tree).props.onClick();createForm(tree).props.onSubmit({preventDefault(){}});
+  assert.equal(h.calls.length,2);tree=h.render();assert.ok(nodes(tree).filter(n=>n.type==='button').every(n=>n.props.disabled));release({id:5,setupDone:false});await tick();
 });
-
 
 test('global navigation hides the bottom bar on Travel creation and demo, but keeps it on trip pages', () => {
   let path = '/travel/new';
@@ -187,7 +199,7 @@ test('copy: the notice is on the final page only, and new trip uses the frame ba
   assert.equal(has(screen('app/travel/[id]/final/page.tsx',trip('final')).tree,'notice'),true);
   for(const file of ['app/travel/new/page.tsx','app/travel/[id]/page.tsx','app/travel/[id]/plans/page.tsx','app/travel/[id]/finding/page.tsx']) assert.equal(has(screen(file,file.includes('new')?null:trip('voting')).tree,'notice'),false,file);
   const created=screen('app/travel/new/page.tsx',null);
-  assert.equal(nodes(created.tree).find(n=>n.type==='main').props.back,'/travel');assert.ok(!/Back to trips/.test(created.txt));
+  assert.equal(nodes(created.tree).find(n=>n.type==='back').props.href,'/travel');assert.ok(!/Back to trips|Try the demo/.test(created.txt));
 });
 test('copy: final page is the title, the pick, short status lines and the redraw count',()=>{
   const { txt }=screen('app/travel/[id]/final/page.tsx',trip('final',{expired:true,settingsChanged:true,confirmedAt:null}));

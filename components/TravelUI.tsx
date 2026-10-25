@@ -36,10 +36,12 @@ export function AirportSelect({ value, onChange, label }: { value: string; onCha
     <option value="">Choose a US airport</option>{AIRPORTS.map(([code,city]) => <option key={code} value={code}>{code} · {city}</option>)}
   </select></label>;
 }
-export function DatesEditor({ value, onChange }: { value: DiscoveryDates; onChange: (v: DiscoveryDates) => void }) {
+export function DatesEditor({ value, onChange, tall = false }: { value: DiscoveryDates; onChange: (v: DiscoveryDates) => void; tall?: boolean }) {
+  // `tall` matches the 54px inputs on the Start a trip page.
+  const field = `${travelInput} mt-1 ${tall ? '!h-[54px] !rounded-2xl !border-2 !px-3 !text-base' : '!px-1 !text-sm'}`;
   return <fieldset className="min-w-0 space-y-3"><legend className="mb-2 font-bold">When can everyone travel?</legend>
-    <div className="grid min-w-0 grid-cols-2 gap-2"><label className="min-w-0 text-xs font-semibold">Depart<input required type="date" aria-label="Shared departure date" value={value.depart} onChange={e=>onChange({...value,depart:e.target.value})} className={`${travelInput} mt-1 !px-1 !text-sm`}/></label>
-    <label className="min-w-0 text-xs font-semibold">Return<input required type="date" aria-label="Shared return date" value={value.return} onChange={e=>onChange({...value,return:e.target.value})} className={`${travelInput} mt-1 !px-1 !text-sm`}/></label></div>
+    <div className="grid min-w-0 grid-cols-2 gap-2"><label className="min-w-0 text-xs font-semibold">Depart<input required type="date" aria-label="Shared departure date" value={value.depart} onChange={e=>onChange({...value,depart:e.target.value})} className={field}/></label>
+    <label className="min-w-0 text-xs font-semibold">Return<input required type="date" aria-label="Shared return date" value={value.return} onChange={e=>onChange({...value,return:e.target.value})} className={field}/></label></div>
   </fieldset>;
 }
 export function DiscoverySummaryNote({ summary, demo = false }: { summary?: DiscoverySummary | null; demo?: boolean }) {

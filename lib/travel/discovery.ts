@@ -1,5 +1,5 @@
 // Pure discovery rules shared by the server and synthetic demo. No I/O or private data returned.
-import { TravelInputError, validAirport, validDay, type Candidate, type Option, type Route, type Quote } from './core';
+import { AIRPORTS, FARE_TTL, TravelInputError, validAirport, validDay, type Candidate, type Option, type Route, type Quote } from './core';
 import { budgetCheck, type Financial } from './finance';
 export type DiscoveryDates = { version: 1; mode: 'discover'; depart: string; return: string };
 export type DiscoverySummary = { searchedCount: number; qualifiedCount: number; returnedCount: number };
@@ -23,15 +23,71 @@ export function validateDates(value: unknown, now = new Date()): DiscoveryDates 
   if (new Date(dates.return).getTime() - now.getTime() > 365 * 864e5) throw new TravelInputError('Choose dates within the next year.');
   return dates;
 }
-/** A bounded sample, not a geographic optimum or all-US search: up to two member cities plus varied hubs. */
-export function discoveryShortlist(origins: string[], dates: DiscoveryDates): Candidate[] {
+// Approximate airport coordinates, used only to choose a bounded geographic sample.
+// Distances are not fares, scheduled flight times, or claims of direct service.
+const geography: Record<string, readonly [number, number]> = {
+  AUS:[30.2,-97.7], DEN:[39.9,-104.7], ELP:[31.8,-106.4], IAH:[30.0,-95.3],
+  ORD:[42.0,-87.9], ATL:[33.6,-84.4], BOS:[42.4,-71.0], CLT:[35.2,-80.9],
+  DFW:[32.9,-97.0], DTW:[42.2,-83.4], EWR:[40.7,-74.2], IAD:[38.9,-77.5],
+  JFK:[40.6,-73.8], LAS:[36.1,-115.2], LAX:[33.9,-118.4], MCO:[28.4,-81.3],
+  MIA:[25.8,-80.3], MSP:[44.9,-93.2], PDX:[45.6,-122.6], PHL:[39.9,-75.2],
+  PHX:[33.4,-112.0], SAN:[32.7,-117.2], SEA:[47.4,-122.3], SFO:[37.6,-122.4], SLC:[40.8,-112.0],
+};
+const hubs = new Set(['ATL','ORD','DFW','DEN','IAH','CLT','DTW','MSP','SLC','PHX','LAX','SFO','SEA','EWR','JFK','IAD','MIA']);
+function distance(a: string, b: string) {
+  const [lat1,lon1] = geography[a], [lat2,lon2] = geography[b];
+  const rad = Math.PI / 180;
+  const h = Math.sin((lat2-lat1)*rad/2)**2 + Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin((lon2-lon1)*rad/2)**2;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1,h)));
+}
+/** Geographic heuristic only: balance average and longest distance, with a modest hub preference.
+ * Reserve up to two member cities (most members first), then fill from the geographic ranking.
+ * Previous rejected destinations stay excluded, even when the supported pool is exhausted.
+ * Never search more than six destinations or eight travelers; actual quotes decide affordability.
+ */
+export function discoveryShortlist(origins: string[], dates: DiscoveryDates, excludedAirports: string[] = []): Candidate[] {
   if (!origins.length || origins.length > 8 || origins.some(o => !validAirport(o))) throw new TravelInputError('Every traveler needs a supported home airport.');
+  const excluded = new Set(excludedAirports.filter(validAirport));
   const counts = new Map<string,number>();
   for (const origin of origins) counts.set(origin,(counts.get(origin)??0)+1);
-  const memberCities = counts.size > 1 ? [...counts].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,2).map(([airport])=>airport) : [];
-  const hubs = ['AUS','DEN','ATL','DFW','ORD','LAS','SEA','MCO'];
-  return [...new Set([...hubs.slice(0,2),...memberCities,...hubs.slice(2)])].filter(airport=>!origins.every(o=>o===airport)).slice(0,6)
-    .map((airport,i)=>({ id:i+1,airport,depart:dates.depart,return:dates.return }));
+  const score = (airport: string) => {
+    const lengths = origins.map(origin => distance(origin,airport));
+    return lengths.reduce((a,b)=>a+b,0)/lengths.length + .65*Math.max(...lengths) - (hubs.has(airport)?100:0);
+  };
+  const ranked = AIRPORTS.map(([airport])=>airport).filter(airport=>!excluded.has(airport) && !origins.every(o=>o===airport))
+    .sort((a,b)=>score(a)-score(b)||a.localeCompare(b));
+  const memberCities = counts.size > 1 ? [...counts].filter(([airport])=>!excluded.has(airport)).sort((a,b)=>b[1]-a[1]||score(a[0])-score(b[0])||a[0].localeCompare(b[0])).slice(0,2).map(([airport])=>airport) : [];
+  const selected = [...new Set([...memberCities,...ranked])].slice(0,6);
+  return selected.sort((a,b)=>score(a)-score(b)||a.localeCompare(b)).map((airport,i)=>({id:i+1,airport,depart:dates.depart,return:dates.return}));
+}
+
+/** Choose distinct useful tradeoffs from eligible quotes. Fare checks never use these scores. */
+export function recommendDestinations(qualified: Option[]): Option[] {
+  if (!qualified.length) return [];
+  const byCost = [...qualified].sort((a,b)=>a.total!-b.total!||a.airport.localeCompare(b.airport)||a.id-b.id);
+  const selected: Option[] = [];
+  const add = (option: Option, kind: NonNullable<Option['recommendation']>['kind'], label: string, reason: string) => {
+    if (!selected.some(o=>o.id===option.id)) selected.push({...option,recommendation:{kind,label,reason}});
+  };
+  add(byCost[0],'lowest-cost','Lowest group cost','Lowest total round-trip fare among destinations that fit everyone in this search.');
+  const metricsKnown = byCost.every(o=>o.routes.every(r=>r.local || (r.duration!==null && Number.isFinite(r.duration) && r.duration>0 && r.stops!==null && Number.isInteger(r.stops) && r.stops>=0)));
+  if (metricsKnown) {
+    const worst = (o: Option) => Math.max(...o.routes.map(r=>r.local?0:r.duration!));
+    const stops = (o: Option) => o.routes.reduce((sum,r)=>sum+(r.local?0:r.stops!),0);
+    const easy = [...byCost].sort((a,b)=>worst(a)-worst(b)||stops(a)-stops(b)||a.total!-b.total!||a.airport.localeCompare(b.airport))[0];
+    add(easy,'easiest-travel','Shortest longest flight',`Shortest longest outbound itinerary in this search: ${worst(easy)} minutes. Return-trip durations are not compared.`);
+  }
+  const highest = (o: Option) => Math.max(...o.routes.map(r=>r.price!));
+  const maxTotal = Math.max(...byCost.map(o=>o.total!));
+  const maxFare = Math.max(...byCost.map(highest));
+  const balance = (o: Option) => .5*o.total!/maxTotal + .5*highest(o)/maxFare;
+  const balanced = [...byCost].sort((a,b)=>balance(a)-balance(b)||a.total!-b.total!||a.airport.localeCompare(b.airport))[0];
+  add(balanced,'balanced','Balanced flight costs','Balances the group total and the highest individual round-trip fare among eligible destinations.');
+  for (const option of byCost) {
+    if (selected.length >= 3) break;
+    add(option,'alternative','Another budget fit','Another destination that fits everyone, ordered by total round-trip fare.');
+  }
+  return selected.slice(0,3);
 }
 export type DiscoveryTraveler = { id: number; name: string; airport: string; cap: number; funds: Financial };
 /** Reject before persistence: group-total cheapness can never conceal a member's over-cap route. */
@@ -42,6 +98,7 @@ export function qualifyDestinations(candidates: Candidate[], travelers: Discover
     for (const member of travelers) {
       const quote = quotes.get(`${member.airport}/${candidate.id}`);
       if (!quote || quote.origin !== member.airport || quote.destination !== candidate.airport || quote.depart !== candidate.depart || quote.return !== candidate.return ||
+          (quote.source!=='sample' && (!Number.isFinite(Date.parse(quote.quotedAt)) || now-Date.parse(quote.quotedAt)<0 || now-Date.parse(quote.quotedAt)>=FARE_TTL)) ||
           quote.local !== (quote.origin === quote.destination) || quote.price === null || !Number.isFinite(quote.price) || (quote.local ? quote.price !== 0 || quote.origin !== quote.destination : quote.price <= 0) ||
           !Number.isFinite(member.cap) || member.cap < 0.01 || quote.price > member.cap) break;
       const check = budgetCheck(quote.price,member.cap,member.funds,now);
@@ -51,8 +108,7 @@ export function qualifyDestinations(candidates: Candidate[], travelers: Discover
     if (!travelers.length || routes.length !== travelers.length || routes.every(r=>r.local)) continue;
     qualified.push({ ...candidate,routes,complete:true,total:Math.round(routes.reduce((sum,r)=>sum+r.price!,0)*100)/100 });
   }
-  qualified.sort((a,b)=>a.total!-b.total!||a.airport.localeCompare(b.airport)||a.id-b.id);
-  return { options:qualified.slice(0,3),summary:{ searchedCount:candidates.length,qualifiedCount:qualified.length,returnedCount:Math.min(3,qualified.length) } };
+  return { options:recommendDestinations(qualified),summary:{ searchedCount:candidates.length,qualifiedCount:qualified.length,returnedCount:Math.min(3,qualified.length) } };
 }
 /** Comparison snapshots share the existing JSONB column. Legacy final arrays still read unchanged. */
 export function readComparison(value: unknown): { options: Option[]; summary: DiscoverySummary | null; discovery: boolean } {

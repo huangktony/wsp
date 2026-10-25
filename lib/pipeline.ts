@@ -1,5 +1,3 @@
-import { confirmedMemberIds, planTallies } from "./voting";
-import { chooseWinner, isRemoved, shouldClose } from "./votingRules";
 import { includedVoteSql } from "./roundParticipation";
 import {
   roundSettings,
@@ -20,15 +18,18 @@ import {
 import { planLevel } from "./price";
 import { generatePlans } from "./gemini";
 import { splitAmounts, type SplitMode } from "./split";
+import { confirmedMemberIds, planTallies } from "./voting";
+import { chooseWinner, isRemoved, shouldClose } from "./votingRules";
 
 /*
  * Plan round lifecycle (plan_rounds.status):
  *   generating -> voting -> final      (a plan won)
- *                        -> vetoed     (every plan was vetoed, none approved; next round leaves those places out)
+ *                        -> vetoed     (no plan was approved, or a majority vetoed every plan; next round leaves vetoed places out)
  *   generating -> failed               (generation crashed or stalled)
  *   generating/voting -> superseded    (a new search replaced this attempt)
- * During voting, each member confirms their ballot. After final, the creator confirms the plan,
- * then the payer picks even / by item split and sends requests (requests_sent).
+ * During voting a plan a majority vetoed is removed, and each member's votes are final once they confirm them.
+ * After final, the creator confirms the plan (confirmed_at), then the payer (group creator) picks even / by item split
+ * and sends requests (requests_sent).
  */
 
 /** Nothing within the group budget was found. The message is shown to the user as is. */

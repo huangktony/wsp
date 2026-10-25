@@ -233,7 +233,7 @@ test('server advisory lock gives simultaneous callers one generation owner and r
     './tier': {},
     './serpapi': {},
     './price': {},
-    './gemini': {},
+    './meta': {},
   });
   const claims = await Promise.all([startRound(5), startRound(5)]);
   assert.equal(inserts, 1);
@@ -620,7 +620,7 @@ test('new rounds snapshot current city and distance; only same-city in-progress 
     './tier': {},
     './serpapi': { MissingCityError },
     './price': {},
-    './gemini': {},
+    './meta': {},
   });
   assert.equal((await startRound(5)).created, true);
   assert.equal(last.search_city, 'Houston, TX');
@@ -668,7 +668,7 @@ test('generation uses the round snapshot for search and prompt, not later group 
       PlaceSearchError: class extends Error {},
     },
     './price': { planLevel: () => '$' },
-    './gemini': {
+    './meta': {
       generatePlans: async ctx => {
         calls.push(ctx);
         return [{
@@ -764,7 +764,7 @@ test('pending migration rejects regenerating untracked legacy rounds before inse
     './tier': {},
     './serpapi': {},
     './price': {},
-    './gemini': {},
+    './meta': {},
   });
   await assert.rejects(startRound(5), SearchSchemaPendingError);
   last = null;
@@ -815,7 +815,7 @@ test('legacy generation passes Austin coordinates and city to search and plan wr
         PlaceSearchError: class extends Error {},
       },
       './price': { planLevel: () => '$' },
-      './gemini': {
+      './meta': {
         generatePlans: async ctx => {
           promptCity = ctx.city;
           return [{
@@ -939,7 +939,7 @@ test('editing any search setting creates a fresh round with current Houston dist
     './tier': {},
     './serpapi': {},
     './price': {},
-    './gemini': {},
+    './meta': {},
   });
   await startRound(5);
   assert.equal((await startRound(5)).created, false);
@@ -1022,7 +1022,7 @@ test('generation uses saved preferences and persists a disclosed radius expansio
       PlaceSearchError: class extends Error {},
     },
     './price': { planLevel: () => '$' },
-    './gemini': {
+    './meta': {
       generatePlans: async ctx => {
         assert.equal(ctx.tier, '$');
         assert.equal(ctx.maxDistanceMi, 1);
@@ -1086,7 +1086,7 @@ test('a newer failed search is retried instead of reusing an older voting round'
   } }) };
   const { startRound } = load('lib/pipeline.ts', {
     './db': { pool }, './roundSettings': settingsModule, './finding': finding,
-    './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './meta': {},
   });
   const result = await startRound(5);
   assert.equal(result.created, true);
@@ -1127,7 +1127,7 @@ test('replacement retires old voting/generating work and a restored final still 
   } }) };
   const { startRound, FinalPlanError } = load('lib/pipeline.ts', {
     './db': { pool }, './roundSettings': settingsModule, './finding': finding,
-    './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+    './split': load('lib/split.ts'), './tier': {}, './serpapi': {}, './price': {}, './meta': {},
   });
   await startRound(5);
   old = { ...old, status: 'final' };
@@ -1181,8 +1181,9 @@ test('settlement closes expired or confirmed ballots, but cannot finalize an obs
   for (const condition of ['expired', 'complete', 'open', 'obsolete']) {
     let status = 'voting', writes = 0;
     const { settleRound } = load('lib/pipeline.ts', {
+      './voting': { planTallies: async () => [{ id: 101, cost: 12, approves: 1, vetoes: 0 }], confirmedMemberIds: async () => condition === 'complete' ? [1, 2] : [] },
       './roundSettings': settingsModule, './finding': finding, './split': load('lib/split.ts'),
-      './tier': {}, './serpapi': {}, './price': {}, './gemini': {},
+      './tier': {}, './serpapi': {}, './price': {}, './meta': {},
       './db': {
         q1: async sql => {
           if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
@@ -1191,7 +1192,7 @@ test('settlement closes expired or confirmed ballots, but cannot finalize an obs
           assert.match(normalized, /r\.id\s*=\s*\(\s*select (?:latest\.)?id from plan_rounds/);
           assert.match(normalized, /order by \((?:latest\.)?status='final'\) desc,\s*(?:latest\.)?id desc limit 1/);
           if (condition === 'obsolete') return null;
-          return { id: 10, group_id: 5, status, expired: condition === 'expired', plans: 2, members: 2, votes: condition === 'complete' ? 4 : 1 };
+          return { id: 10, group_id: 5, status, expired: condition === 'expired', plans: 2, members: 2, votes: 4 };
         },
         q: async sql => {
           if (sql.includes('from vote_confirmations')) return condition === 'complete' ? [{ user_id: 1 }, { user_id: 2 }] : [];

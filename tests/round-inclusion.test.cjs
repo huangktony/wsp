@@ -124,7 +124,7 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
   const pipeline = load('lib/pipeline.ts', {
     './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
     './db': { pool: { connect: async () => ({ query, release() {} }) } },
-    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
+    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './split': {},
   });
   await pipeline.startRound(5);
   assert.equal(inserts[0].length, 3);
@@ -136,32 +136,39 @@ test('round creation saves inclusion and re-running after setup creates a fresh 
   assert.equal(queries.some(sql => sql.includes('insert into votes')), false);
 });
 
-test('winner tallies and automatic closing apply the same inclusion predicate', async () => {
+test('winner tallies and confirmation-based closing apply the same inclusion predicate', async () => {
   const sqlSeen = [];
-  const pipeline = load('lib/pipeline.ts', {
-    './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
-    './db': {
-      q1: async sql => {
-        sqlSeen.push(sql);
-        if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
-        if (sql.startsWith('select status')) return { status: 'final' };
-        // One included voter, one plan, one vote: excluded members must not keep it open.
-        assert.ok(sql.includes(inclusion.includedVoteSql()), 'member and ballot totals must be restricted');
-        assert.equal(sql.split(inclusion.includedVoteSql()).length - 1, 1);
-        return { id: 10, status: 'voting', group_id: 5, expired: false, plans: 1, members: 1, votes: 1 };
-      },
-      q: async sql => {
-        sqlSeen.push(sql);
-        if (sql.includes('from vote_confirmations')) return [{ user_id: 1 }];
-        if (sql.includes('left join votes')) {
-          assert.ok(sql.includes(inclusion.includedVoteSql('r', 'v.user_id')));
-          return [{ id: 101, cost: 10, approves: 1, vetoes: 0 }];
-        }
-        return [];
-      },
+  const db = {
+    q1: async sql => {
+      sqlSeen.push(sql);
+      if (sql.startsWith('select status')) return { status: 'final' };
+      if (sql.includes("to_regclass('vote_confirmations')")) return { ok: true };
+      // One included voter, one plan, one vote: excluded members must not keep it open.
+      assert.ok(sql.includes(inclusion.includedVoteSql()), 'member and ballot totals must be restricted');
+      assert.equal(sql.split(inclusion.includedVoteSql()).length - 1, 1);
+      return { id: 10, status: 'voting', group_id: 5, expired: false, plans: 1, members: 1, votes: 1 };
     },
-    './tier': {}, './serpapi': {}, './price': {}, './gemini': {}, './split': {},
+    q: async sql => {
+      sqlSeen.push(sql);
+      if (sql.includes('left join votes')) {
+        assert.ok(sql.includes(inclusion.includedVoteSql('r', 'v.user_id')));
+        assert.match(sql, /left join memberships m/);
+        return [{ id: 101, cost: 10, approves: 1, vetoes: 0 }];
+      }
+      if (sql.includes('from vote_confirmations')) {
+        assert.ok(sql.includes(inclusion.includedVoteSql('r', 'm.user_id')), 'excluded confirmations must not close voting early');
+        return [{ user_id: 1 }];
+      }
+      return [];
+    },
+  };
+  const voting = load('lib/voting.ts', { './roundParticipation': inclusion, '@/lib/db': db });
+  const pipeline = load('lib/pipeline.ts', {
+    './voting': voting,
+    './roundParticipation': inclusion, './roundSettings': settings, './finding': load('lib/finding.ts'),
+    './db': db,
+    './tier': {}, './serpapi': {}, './price': {}, './meta': {}, './gemini': {}, './split': {},
   });
   assert.equal(await pipeline.settleRound(10), 'final');
-  assert.ok(sqlSeen.some(sql => sql.includes("status='final'")));
+  assert.ok(sqlSeen.some(sql => sql.startsWith("update plan_rounds set status='final'")));
 });

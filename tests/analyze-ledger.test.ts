@@ -18,14 +18,14 @@ const NAMES = new Map([["acct-bea", "Bea"], ["acct-alex", "Alex"]]);
 
 test("a payback to you shows +amount (exact cents) with the friend's name", () => {
   const a = analyze([], M, 30, NOW, [inRow(1833, "acct-bea")], NAMES);
-  assert.deepEqual(a.transactions, [{ date: daysAgo(1), label: "Bea paid you back", amount: 18.33, kind: "paid_you_back" }]);
+  assert.deepEqual(a.transactions, [{ date: daysAgo(1), label: "Bea paid you back", amount: 18.33, kind: "paid_you_back", category: "paid back" }]);
   assert.equal(a.paidBackToYou, 18.33);
   assert.equal(a.spent, 0, "money coming in is not spending");
 });
 
 test("a payback you made shows -amount with the friend's name and counts as spent", () => {
   const a = analyze([], M, 30, NOW, [outRow(1833, "acct-alex")], NAMES);
-  assert.deepEqual(a.transactions, [{ date: daysAgo(1), label: "Paid back Alex", amount: -18.33, kind: "paid_back" }]);
+  assert.deepEqual(a.transactions, [{ date: daysAgo(1), label: "Paid back Alex", amount: -18.33, kind: "paid_back", category: "paid back" }]);
   assert.equal(a.spent, 18.33);
   assert.equal(a.paidBackToYou, 0);
   assert.deepEqual(a.categories, [{ name: PAID_BACK_CATEGORY, total: 18.33 }]);
@@ -97,4 +97,9 @@ test("no ledger means the old behavior and an empty paid-back total", () => {
   assert.equal(a.paidBackToYou, 0);
   assert.equal(a.transactions.length, 1);
   assert.equal(a.spent, 10);
+});
+
+test("each transaction carries its category so the screen can color it: purchases by merchant, paybacks as 'paid back'", () => {
+  const a = analyze([buy("f", 12, daysAgo(3)), buy("h", 40, daysAgo(2))], M, 30, NOW, [inRow(500, "acct-bea", daysAgo(1))], NAMES);
+  assert.deepEqual(a.transactions.map((t) => t.category), ["paid back", "hangout", "food"]);
 });

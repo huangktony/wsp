@@ -18,7 +18,7 @@ export const DEFAULT_FUN_AVG = 20;
 export const UNKNOWN_MERCHANT = "Unknown merchant";
 
 /** One line of the Transactions list. `amount` is signed: purchases and paybacks you made are negative, paybacks to you are positive. */
-export type Transaction = { date: string; label: string; amount: number; kind: "purchase" | "paid_back" | "paid_you_back" };
+export type Transaction = { date: string; label: string; amount: number; kind: "purchase" | "paid_back" | "paid_you_back"; category: Category | typeof PAID_BACK_CATEGORY };
 
 export const PAID_BACK_CATEGORY = "paid back";
 export const UNKNOWN_FRIEND = "a friend";
@@ -78,12 +78,12 @@ export function analyze(
       const name = names.get(meta.acct) ?? UNKNOWN_FRIEND;
       const dollars = ledgerDollars(e);
       return e.kind === "out"
-        ? [{ date: e.date, label: `Paid back ${name}`, amount: -dollars, kind: "paid_back" }]
-        : [{ date: e.date, label: `${name} paid you back`, amount: dollars, kind: "paid_you_back" }];
+        ? [{ date: e.date, label: `Paid back ${name}`, amount: -dollars, kind: "paid_back", category: PAID_BACK_CATEGORY }]
+        : [{ date: e.date, label: `${name} paid you back`, amount: dollars, kind: "paid_you_back", category: PAID_BACK_CATEGORY }];
     });
   const paidOut = paybacks.filter((t) => t.kind === "paid_back").reduce((s, t) => s - t.amount, 0);
   if (paidOut > 0) totals.set(PAID_BACK_CATEGORY, paidOut);
-  const transactions: Transaction[] = [...rows.map((r) => ({ date: r.date, label: r.merchant, amount: -r.amount, kind: "purchase" as const })), ...paybacks]
+  const transactions: Transaction[] = [...rows.map((r) => ({ date: r.date, label: r.merchant, amount: -r.amount, kind: "purchase" as const, category: r.category })), ...paybacks]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .map((t) => ({ ...t, amount: cents(t.amount) }));
 

@@ -1,9 +1,8 @@
 import { mySetupDone, SETUP_REQUIRED_MESSAGE } from "./finding";
-import type { Redraw } from "@/components/RedrawVote";
 import { api } from "./client";
 
 export type FindingGroup = {
-  redraw?: Redraw | null;
+  redraw?: { locked: false | "confirmed" | "locked"; votes: number; members: number; needed: number; mine: boolean } | null;
   me: number;
   members: { id: number; setup_done: boolean }[];
   groupTier: string | null;

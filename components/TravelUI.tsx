@@ -1,17 +1,26 @@
 'use client';
 import Link from 'next/link';
 import { Page } from './Page';
+import { Inter } from 'next/font/google';
+import { Skeleton, SkeletonBlock } from './Skeleton';
+const inter = Inter({ subsets: ['latin'], weight: ['400', '600', '700', '800'] });
 import { type DiscoveryDates, type DiscoverySummary } from '@/lib/travel/discovery';
 import { AIRPORTS, airportName, cheapest, recheckLink, type Option, type Vote } from '@/lib/travel/core';
 export const travelFocus = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo';
-export const travelButton = `inline-flex min-h-11 items-center justify-center rounded-2xl bg-matcha px-5 py-3 text-sm font-bold text-matchaink disabled:opacity-50 ${travelFocus}`;
-export const travelQuiet = `inline-flex min-h-11 items-center justify-center rounded-2xl border border-outline px-4 py-2 text-sm font-bold text-indigo disabled:opacity-50 ${travelFocus}`;
+export const travelButton = `inline-flex min-h-12 items-center justify-center rounded-full bg-panel px-5 py-3 text-base font-bold text-white disabled:opacity-50 ${travelFocus}`;
+export const travelQuiet = `inline-flex min-h-12 items-center justify-center rounded-full border border-outline px-4 py-3 text-sm font-bold text-indigo disabled:opacity-50 ${travelFocus}`;
 export const travelInput = `min-h-11 w-full min-w-0 rounded-xl border border-outline bg-surface px-3 py-2 text-base text-indigo ${travelFocus}`;
-export function TravelFrame({ title, eyebrow = 'WSP TRAVEL', children, demo = false }: { title: string; eyebrow?: string; children: React.ReactNode; demo?: boolean }) {
-  return <Page variant="plain"><div className="bg-surface px-5 pb-8 pt-6 text-indigo" style={{ fontFamily: 'Figtree, system-ui, sans-serif' }}>
-    <header className="mb-6"><p className="mb-2 text-xs font-extrabold tracking-[0.18em] text-secondary">{eyebrow}</p><h1 className="break-words font-[inherit] text-[32px] font-extrabold leading-tight tracking-[-1px]">{title}</h1></header>
+export function TravelFrame({ title, eyebrow = 'WSP TRAVEL', children, demo = false, back }: { title: string; eyebrow?: string; children: React.ReactNode; demo?: boolean; back?: string }) {
+  return <div className={inter.className}><Page back={back}><div className="text-indigo">
+    <header className="mb-5"><p className="mb-2 text-xs font-extrabold tracking-[0.18em] text-secondary">{eyebrow}</p><h1 className="break-words font-[inherit] text-[28px] font-extrabold leading-[1.1] tracking-[-0.5px]">{title}</h1></header>
     <div className="space-y-5">{children}</div>
-  </div></Page>;
+  </div></Page></div>;
+}
+export function TravelSkeleton() {
+  return <Skeleton><SkeletonBlock className="mb-4 h-7 w-2/3"/><SkeletonBlock className="mb-4 h-24"/><SkeletonBlock className="mb-4 h-48"/><SkeletonBlock className="h-12"/></Skeleton>;
+}
+export function FareWarning({ expired }: { expired?: boolean }) {
+  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-xs leading-relaxed text-secondary">{expired ? 'These fare estimates have expired. Your destination votes are saved and remain open until the voting deadline. Recheck fares before booking.' : 'Vote on the destination using these fare estimates. Prices can change; recheck fares before booking.'}</p>;
 }
 export function TravelArt() {
   return <svg viewBox="0 0 320 115" role="img" aria-label="Three friends, one shared destination" className="w-full rounded-3xl bg-pistachio text-indigo">
@@ -34,7 +43,7 @@ export function DatesEditor({ value, onChange }: { value: DiscoveryDates; onChan
 }
 export function DiscoverySummaryNote({ summary, demo = false }: { summary?: DiscoverySummary | null; demo?: boolean }) {
   if (!summary) return null;
-  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-sm text-secondary">{demo?'Sample discovery: ':''}Checked {summary.searchedCount} supported destinations; {summary.qualifiedCount} fit everyone’s flight limits. {summary.returnedCount === 0 ? 'No destinations to vote on yet.' : summary.returnedCount < 3 ? `Only ${summary.returnedCount} option${summary.returnedCount===1?'':'s'} qualified; we haven’t added over-budget alternatives.` : `Showing the ${summary.returnedCount} lowest group flight totals found.`} This is a curated shortlist, not an exhaustive search.</p>;
+  return <p role="status" className="rounded-2xl bg-pistachio p-4 text-sm text-secondary">{demo?'Sample discovery: ':''}Checked {summary.searchedCount} supported destinations; {summary.qualifiedCount} fit everyone’s flight limits. {summary.returnedCount === 0 ? 'No destinations to vote on yet.' : summary.returnedCount < 3 ? `Only ${summary.returnedCount} option${summary.returnedCount===1?'':'s'} qualified; we haven’t added over-budget alternatives.` : `Showing ${summary.returnedCount} distinct destinations that fit the group.`} This is a curated shortlist, not an exhaustive search.</p>;
 }
 export function TravelNotice() {
   return <p className="rounded-2xl border border-dashed border-outline p-4 text-xs leading-relaxed text-secondary">Flight estimates only. Hotels, food, baggage and ground transport are excluded. Fares can change; recheck with the airline before booking. Private checks use the Nessie sandbox, not a real bank verification or financial advice. We never book or move money.</p>;
@@ -42,10 +51,11 @@ export function TravelNotice() {
 const money = (n: number) => new Intl.NumberFormat('en-US',{ style:'currency',currency:'USD',maximumFractionDigits:2 }).format(n);
 export function ComparisonCards({ options, myVotes, onVote, voting, busy = false, winnerId, demo = false, showRecommendation = true }: { options: Option[]; myVotes: { optionId:number; value:Vote }[]; onVote?: (id:number,value:Vote) => void; voting: boolean; busy?: boolean; winnerId?: number | null; demo?: boolean; showRecommendation?: boolean }) {
   const best = showRecommendation ? cheapest(options) : null;
-  return <div className="space-y-4">{options.map(o => <article key={o.id} className={`overflow-hidden rounded-3xl border ${winnerId === o.id ? 'border-matcha' : 'border-azure'} bg-surface`}>
+  return <div className="space-y-4">{options.map(o => <article key={o.id} className={`card overflow-hidden !p-0 ${winnerId === o.id ? 'border-2 border-sage' : ''}`}>
     <header className={`p-4 ${winnerId === o.id || best === o.id ? 'bg-pistachio' : 'bg-orchid/20'}`}>
-      <div className="mb-2 flex flex-wrap gap-2">{winnerId === o.id && <span className="rounded-full bg-panel px-3 py-1 text-xs font-bold text-white">Your meeting place</span>}{best === o.id && <span className="rounded-full bg-matcha px-3 py-1 text-xs font-bold text-matchaink">Lowest total found</span>}</div>
-      <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-[inherit] text-2xl font-extrabold">{airportName(o.airport)} <span className="text-sm font-normal text-secondary">{o.airport}</span></h2><p className="text-2xl font-extrabold">{o.total === null ? 'Unavailable' : money(o.total)}</p></div>
+      <div className="mb-2 flex flex-wrap gap-2">{showRecommendation && o.recommendation && <span className="rounded-full bg-orchid px-3 py-1 text-xs font-bold text-orchidink">{o.recommendation.label}</span>}{winnerId === o.id && <span className="rounded-full bg-panel px-3 py-1 text-xs font-bold text-white">Your meeting place</span>}{best === o.id && o.recommendation?.kind !== 'lowest-cost' && <span className="rounded-full bg-matcha px-3 py-1 text-xs font-bold text-matchaink">Lowest total found</span>}</div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-[inherit] text-xl font-extrabold">{airportName(o.airport)} <span className="text-sm font-normal text-secondary">{o.airport}</span></h2><p className="text-xl font-extrabold">{o.total === null ? 'Unavailable' : money(o.total)}</p></div>
+      {showRecommendation && o.recommendation && <p className="mb-2 text-sm text-secondary">{o.recommendation.reason}</p>}
       <p className="mt-1 text-xs text-secondary">{o.depart} → {o.return} · {o.complete ? 'group round-trip total' : 'Some routes are missing'}</p>
     </header>
     <ul className="divide-y divide-azure px-4">{o.routes.map(r => <li key={r.userId} className="py-3">

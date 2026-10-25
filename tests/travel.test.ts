@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateCandidates, validateSetup, validDay, defaultCandidates, optionWithTotals, publicOptions, cheapest, winner, toggleBallot, ballotComplete, CHECK_TTL, type Route, type Ballot } from '../lib/travel/core';
+import { validateCandidates, validateSetup, validDay, defaultCandidates, optionWithTotals, publicOptions, cheapest, winner, toggleBallot, ballotComplete, CHECK_TTL, FARE_TTL, type Route, type Ballot } from '../lib/travel/core';
 import { availableFunds, budgetCheck } from '../lib/travel/finance';
-import { normalizeFlight, fetchFlight, compareFlights, flightParams } from '../lib/travel/flights';
-import { demoOptions, initialDemo, demoVote, restoreDemo } from '../lib/travel/demo';
+import { normalizeFlight, fetchFlight, compareFlights, flightParams, providerQuoteTime } from '../lib/travel/flights';
+import { demoOptions, initialDemo, demoVote, demoConfirm, restoreDemo } from '../lib/travel/demo';
 const now = new Date('2026-10-25T12:00:00Z');
 const options = defaultCandidates(now);
 const route: Route = { userId:1,name:'Friend',origin:'ELP',destination:'AUS',depart:options[0].depart,return:options[0].return,price:120,local:false,airlines:['Example'],stops:0,duration:90,quotedAt:now.toISOString(),source:'serpapi',check:true,checkSource:'nessie-sandbox' };
@@ -85,11 +85,55 @@ test('sample totals 410/640, voting ties deterministic, toggle restores, all vet
 });
 test('interactive demo switches three voters, persists synthetic state, closes and resets',()=>{
   let s=initialDemo();
-  for(const uid of [1,2,3]){s={...s,voter:uid};s=demoVote(s,1,'approve');s=demoVote(s,2,'veto');}
+  for(const uid of [1,2,3]){s={...s,voter:uid};s=demoVote(s,1,'approve');s=demoVote(s,2,'veto');assert.equal(s.status,'voting');s=demoConfirm(s);}
   assert.equal(s.status,'final');assert.equal(s.winnerId,1);
   assert.deepEqual(demoVote(s,1,'veto'),s);
   assert.deepEqual(restoreDemo(JSON.stringify(s)),s);
   assert.equal(initialDemo().ballots.length,0);
   assert.equal(restoreDemo('{bad').status,'voting');
   let all=initialDemo();for(const uid of [1,2,3]){all={...all,voter:uid};all=demoVote(all,1,'veto');all=demoVote(all,2,'veto');}assert.equal(all.status,'vetoed');assert.equal(all.winnerId,null);
+});
+
+
+test('fare cache deduplicates concurrent public routes, preserves age and isolates returned arrays', async () => {
+  let calls=0;
+  const quotedAt=new Date(Date.now()-60000).toISOString();
+  const request=async()=>{ calls++; await new Promise(resolve=>setTimeout(resolve,2)); return Response.json({search_metadata:{created_at:quotedAt},best_flights:[{price:125,flights:[{airline:'Example'}],total_duration:120}]}); };
+  const results=await Promise.all(Array.from({length:8},()=>fetchFlight('ELP',options[0],request,'fake')));
+  assert.equal(calls,1);
+  assert.ok(results.every(q=>q.quotedAt===quotedAt));
+  results[0].airlines.push('mutated');
+  const cached=await fetchFlight('ELP',{...options[0],id:999},request,'fake');
+  assert.equal(calls,1,'candidate IDs are not part of the public route cache key');
+  assert.deepEqual(cached.airlines,['Example']);
+  assert.equal(cached.quotedAt,quotedAt);
+  await fetchFlight('ELP',{...options[0],return:'2026-12-01'},request,'fake');
+  assert.equal(calls,2,'dates are part of the route key');
+});
+test('provider cache age is retained and expired fares are neither returned as current nor cached', async () => {
+  const requested=Date.now();
+  assert.equal(providerQuoteTime({search_metadata:{created_at:'2026-01-01 12:30:00 UTC'}},requested),'2026-01-01T12:30:00.000Z');
+  assert.equal(providerQuoteTime({search_metadata:{created_at:'not a date'}},requested),new Date(requested).toISOString());
+  let calls=0;
+  const request=async(url: any)=>{ calls++; assert.equal(new URL(url).searchParams.get('no_cache'),'true'); return Response.json({search_metadata:{created_at:new Date(Date.now()-FARE_TTL-1000).toISOString()},best_flights:[{price:150}]}); };
+  const stale=await fetchFlight('ELP',options[0],request,'fake');
+  assert.equal(stale.price,null);assert.match(stale.error!,/expired/);
+  await fetchFlight('ELP',options[0],request,'fake');assert.equal(calls,2);
+});
+test('public fare cache evicts old route entries rather than growing without a bound', async () => {
+  let calls=0;
+  const request=async()=>{ calls++; return Response.json({best_flights:[{price:150}]}); };
+  for(let i=0;i<129;i++) await fetchFlight('ELP',{...options[0],depart:new Date(Date.UTC(2027,0,i+1)).toISOString().slice(0,10)},request,'fake');
+  assert.equal(calls,129);
+  await fetchFlight('ELP',{...options[0],depart:'2027-01-01'},request,'fake');
+  assert.equal(calls,130,'the oldest of 129 unique routes was evicted');
+});
+test('six-destination comparison remains bounded and shared origins never multiply provider calls', async () => {
+  let calls=0;
+  const request=async()=>{calls++;return Response.json({best_flights:[{price:150}]});};
+  const candidates=['AUS','DEN','SEA','LAX','JFK','MIA'].map((airport,i)=>({...options[0],airport,id:i+1}));
+  const quotes=await compareFlights(Array(8).fill('ELP'),candidates,(origin,candidate)=>fetchFlight(origin,candidate,request,'fake'));
+  assert.equal(quotes.size,6);assert.equal(calls,6);
+  await compareFlights(Array(8).fill('ELP'),candidates,(origin,candidate)=>fetchFlight(origin,candidate,request,'fake'));
+  assert.equal(calls,6,'fresh public fares can be reused; private eligibility is recomputed separately');
 });

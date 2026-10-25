@@ -11,11 +11,15 @@ export function travelPhase(comparison: ComparisonPhase, ready: number, members:
   if (comparison?.status === 'generating') return 'finding';
   if (comparison?.status === 'failed') return 'failed';
   if (comparison?.status === 'vetoed') return 'vetoed';
-  if (comparison?.status === 'voting') return comparison.expired ? 'expired' : 'voting';
+  if (comparison?.status === 'voting') return 'voting';
   return members > 0 && ready === members ? 'ready' : 'setup';
 }
-export function travelEntry(id: number | string, setupDone: boolean) {
-  return `/travel/${id}${setupDone ? '' : '/setup'}`;
+export function travelEntry(id: number | string, setupDone: boolean, phase?: TravelPhase) {
+  if (phase === 'final') return `/travel/${id}/final`;
+  if (!setupDone) return `/travel/${id}/setup`;
+  if (phase === 'voting') return `/travel/${id}/plans`;
+  if (phase === 'finding') return `/travel/${id}/finding`;
+  return `/travel/${id}`;
 }
 export function stageLink(id: number | string, phase: TravelPhase) {
   return `/travel/${id}/${phase === 'final' ? 'final' : phase === 'voting' ? 'plans' : 'finding'}`;
@@ -23,6 +27,6 @@ export function stageLink(id: number | string, phase: TravelPhase) {
 export function findingDestination(id: number | string, comparison: ComparisonPhase, observedId: number | null) {
   if (!observedId || comparison?.id !== observedId) return null;
   if (comparison?.status === 'final') return `/travel/${id}/final`;
-  if (comparison?.status === 'voting' && !comparison.expired) return `/travel/${id}/plans`;
+  if (comparison?.status === 'voting') return `/travel/${id}/plans`;
   return null;
 }

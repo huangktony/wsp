@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Page } from "@/components/Page";
-import { BalanceDebtChart } from "@/components/BalanceDebtChart";
 import { CategoryBars } from "@/components/CategoryBars";
 import { TierGauge } from "@/components/TierGauge";
 import { TierBadge } from "@/components/TierBadge";
@@ -29,20 +28,23 @@ export default function Spending() {
       </Page>
     );
   }
-  const bal = data.balance.at(-1)?.value ?? 0, debt = data.debt.at(-1)?.value ?? 0;
+  const n = data.days ?? days;
   return (
     <Page title="Spending and budget" tabs>
-      <div className="card mb-4 text-center">
-        <p className="text-sm font-semibold text-muted">Net position</p>
-        <p className="font-display text-4xl font-bold">${(bal - debt).toLocaleString()}</p>
-        <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted">Your fun budget <TierBadge tier={data.tier} /> avg ${data.avgOuting ?? "–"} per outing</div>
-      </div>
-      <div className="card mb-4"><h2 className="mb-3 font-bold">Your budget level</h2><TierGauge tier={data.tier} avg={data.avgOuting} cutoffs={data.cutoffs} /></div>
       <div className="mb-3 flex gap-2">
         {[7, 14, 30].map((d) => <button key={d} onClick={() => setDays(d)} className={`rounded-full border px-4 py-1 text-sm font-semibold ${days === d ? "border-sage bg-sage text-sageink" : "border-line"}`}>{d}d</button>)}
       </div>
-      <div className="card mb-4"><BalanceDebtChart balance={data.balance} debt={data.debt} /></div>
-      <div className="card mb-4"><h2 className="mb-3 font-bold">By category</h2><CategoryBars data={data.categories} /></div>
+      <div className="card mb-4 text-center">
+        <p className="text-sm font-semibold text-muted">Spent in the last {n} days</p>
+        <p className="font-display text-4xl font-bold">${data.spent.toLocaleString()}</p>
+        <p className="mt-1 text-sm text-muted">{data.count} {data.count === 1 ? "purchase" : "purchases"}</p>
+      </div>
+      <div className="card mb-4">
+        <div className="mb-3 flex items-center justify-between"><h2 className="font-bold">Your budget level</h2><TierBadge tier={data.tier} /></div>
+        <TierGauge tier={data.tier} avg={data.avgOuting} cutoffs={data.cutoffs} usedDefault={data.usedDefault} />
+        <p className="mt-1 text-xs text-muted">Always based on the last 30 days of food and entertainment.</p>
+      </div>
+      <div className="card mb-4"><h2 className="mb-3 font-bold">By category</h2>{data.categories.length ? <CategoryBars data={data.categories} /> : <p className="text-sm text-muted">No purchases in this range.</p>}</div>
       <div className="card"><h2 className="mb-2 font-bold">Recent</h2>
         <ul className="space-y-1 text-sm">{data.recent.map((p: any, i: number) => <li key={i} className="flex justify-between"><span>{p.merchant}</span><span>${p.amount}</span></li>)}</ul>
       </div>

@@ -36,11 +36,13 @@ const dayString = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 /**
  * Window: exactly `days` calendar days in UTC, from (today - (days - 1)) through today, inclusive.
  * For days = 30 a purchase dated 29 days ago counts and one dated 30 days ago does not.
+ * Purchases dated after today are ignored too: Nessie keeps whatever date it is sent.
  */
 export function analyze(purchases: NessiePurchase[], merchantsById: Map<string, MerchantInfo>, days: number, now: Date): Analysis {
   const first = dayString(now.getTime() - (days - 1) * 864e5);
+  const today = dayString(now.getTime());
   const rows = purchases
-    .filter((p) => p.status !== "cancelled" && p.purchase_date >= first)
+    .filter((p) => p.status !== "cancelled" && p.purchase_date >= first && p.purchase_date <= today)
     .map((p) => {
       const m = merchantsById.get(p.merchant_id);
       return { date: p.purchase_date, amount: p.amount, merchant: m?.name ?? UNKNOWN_MERCHANT, category: categoryOf(m?.category) };

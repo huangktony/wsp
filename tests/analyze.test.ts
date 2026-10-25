@@ -99,3 +99,9 @@ test("(g) recent is newest first, capped at 5, with merchant names", () => {
   assert.deepEqual(r.recent.map((x) => x.date), ["2026-10-09", "2026-10-08", "2026-10-07", "2026-10-05", "2026-10-03"]);
   assert.ok(r.recent.every((x) => x.merchant === "Torchy's"));
 });
+
+test("(h) a purchase dated after today is excluded, one dated today is included", () => {
+  const r = analyze([p("f", 10, daysAgo(0)), p("f", 99, daysAgo(-1)), p("e", 99, daysAgo(-30))], M, 30, NOW);
+  assert.equal(r.count, 1);
+  assert.equal(r.spent, 10);
+});

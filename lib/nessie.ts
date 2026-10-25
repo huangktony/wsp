@@ -1,5 +1,5 @@
 // Nessie client. Behavior verified against the live sandbox, see scripts/nessie-probe.ts.
-import { mockPurchases, mockSeries } from "./mocks/data";
+import { mockPurchases } from "./mocks/data";
 import type { MerchantInfo, NessiePurchase } from "./analyze";
 
 const BASE = "https://api.nessieisreal.com";
@@ -185,11 +185,6 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
     return { merchant_id: id, purchase_date: p.date, amount: p.amount, status: "completed" };
   });
   return { purchases, merchants };
-}
-
-export async function getSeries(accountId: string | null, days: number) {
-  // TODO(verify): real balance history and credit card / loan debt. Nessie has no history endpoint, so the series is synthetic either way.
-  return mockSeries(accountId ?? "demo", days);
 }
 
 /**

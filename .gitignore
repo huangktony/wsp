@@ -8,3 +8,6 @@ next-env.d.ts
 # database credentials downloaded from hosting providers
 *credentials*.txt
 *credentials*.env
+
+# headless screenshots for review (not committed)
+.shots/

@@ -1,4 +1,5 @@
 "use client";
+import { useSetupGate } from "@/lib/useSetupGate";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
@@ -20,6 +21,7 @@ function left(ms: number) {
 export default function Plans({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const r = useRouter();
+  useSetupGate(id);
   const { data, error, reload } = useApi<any>(`/api/groups/${id}/plans`, 3000);
   const [err, setErr] = useState("");
   const [mine, setMine] = useState<Record<number, Vote>>({}); // optimistic votes

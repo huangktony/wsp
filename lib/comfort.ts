@@ -18,7 +18,7 @@ export function groupTierFrom(members: { comfort_tier: string | null; budget_tie
 /** PUT /api/groups/[id]/me. comfort_tier is optional: absent leaves the pick alone, null clears it. */
 export const ComfortPick = z.enum(["$", "$$", "$$$"]).nullable();
 export const MeBody = z.object({
-  availability: z.array(z.enum(SLOTS)),
+  availability: z.array(z.enum(SLOTS)).min(1), // setup can't be skipped: at least one free time
   interests: z.array(z.string()).max(12),
   max_distance_mi: z.number().int().min(1).max(100),
   comfort_tier: ComfortPick.optional(),

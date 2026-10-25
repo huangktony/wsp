@@ -83,7 +83,7 @@ export function analyze(
     });
   const paidOut = paybacks.filter((t) => t.kind === "paid_back").reduce((s, t) => s - t.amount, 0);
   if (paidOut > 0) totals.set(PAID_BACK_CATEGORY, paidOut);
-  const transactions: Transaction[] = [...rows.map((r) => ({ date: r.date, label: r.merchant, amount: -r.amount, kind: "purchase" as const, category: r.category })), ...paybacks]
+  const transactions: Transaction[] = [...paybacks, ...rows.map((r) => ({ date: r.date, label: r.merchant, amount: -r.amount, kind: "purchase" as const, category: r.category }))]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .map((t) => ({ ...t, amount: cents(t.amount) }));
 

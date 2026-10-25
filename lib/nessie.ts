@@ -190,6 +190,7 @@ export async function loadSpending(accountId: string | null): Promise<SpendingDa
 /**
  * Pays a friend back for a hangout: a Nessie transfer from the payer's account to the payee's account.
  * TODO(verify): POST /accounts/{id}/transfers body fields against current Nessie docs.
+ * TODO: Nessie stores purchase amounts as whole dollars (12.99 became 12 in the probe); transfers are likely truncated the same way. Verify before relying on split amounts.
  * Returns a transfer id, or a mock id when mocks are on or either account is a mock.
  */
 export async function sendTransfer(fromAccount: string | null, toAccount: string | null, amount: number, description: string): Promise<string> {

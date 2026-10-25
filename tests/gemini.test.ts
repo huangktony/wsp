@@ -27,7 +27,7 @@ test("Gemini generation validates output and falls back safely", async t => {
       let calls = 0;
       globalThis.fetch = async (url, init) => {
         calls++;
-        assert.equal(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
+        assert.equal(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
         assert.ok(!String(url).includes("key"), "the key must never be in the URL");
         assert.equal((init!.headers as Record<string, string>)["x-goog-api-key"], "test-key-never-logged");
         const body = JSON.parse(init!.body as string);
@@ -35,6 +35,8 @@ test("Gemini generation validates output and falls back safely", async t => {
         assert.match(body.systemInstruction.parts[0].text, /Never invent places/);
         assert.equal(body.contents[0].role, "user");
         assert.match(body.contents[0].parts[0].text, /Plan 3 distinct group hangouts in Austin, TX/);
+        // Gemini otherwise writes "17:00", but the app shows "6:00 PM", and the screen prints the raw text.
+        assert.ok(body.contents[0].parts[0].text.includes('Write every stop time like "6:00 PM" (h:mm AM/PM, no 24-hour times).'));
         assert.equal(body.generationConfig.responseMimeType, "application/json");
         assert.equal(body.generationConfig.responseSchema.type, "OBJECT");
         assert.deepEqual(body.generationConfig.responseSchema.required, ["plans"]);
@@ -49,7 +51,7 @@ test("Gemini generation validates output and falls back safely", async t => {
       globalThis.fetch = async (url) => { assert.match(String(url), /\/models\/account-model:generateContent$/); return response({ plans }); };
       assert.deepEqual(await generatePlans(ctx), plans);
       process.env.GEMINI_MODEL = "   ";
-      globalThis.fetch = async (url) => { assert.match(String(url), /\/models\/gemini-3\.8-flash:generateContent$/); return response({ plans }); };
+      globalThis.fetch = async (url) => { assert.match(String(url), /\/models\/gemini-3\.5-flash-lite:generateContent$/); return response({ plans }); };
       assert.deepEqual(await generatePlans(ctx), plans);
       delete process.env.GEMINI_MODEL;
     });
